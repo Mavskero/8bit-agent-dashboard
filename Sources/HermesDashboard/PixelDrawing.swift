@@ -12,6 +12,7 @@ enum PixelPalette {
     static let cyanDim = NSColor(calibratedRed: 0.12, green: 0.42, blue: 0.52, alpha: 1)
     static let cream = NSColor(calibratedRed: 0.94, green: 0.87, blue: 0.72, alpha: 1)
     static let orange = NSColor(calibratedRed: 0.93, green: 0.38, blue: 0.18, alpha: 1)
+    static let red = NSColor(calibratedRed: 0.92, green: 0.22, blue: 0.25, alpha: 1)
     static let green = NSColor(calibratedRed: 0.46, green: 0.75, blue: 0.28, alpha: 1)
     static let violet = NSColor(calibratedRed: 0.48, green: 0.40, blue: 0.78, alpha: 1)
     static let skin = NSColor(calibratedRed: 1.0, green: 0.72, blue: 0.56, alpha: 1)
@@ -162,16 +163,16 @@ struct PixelPainter {
     }
 
     static func drawProgress(_ rect: CGRect, value: Int, color: NSColor, context: CGContext) {
-        PixelPalette.border.setStroke()
-        context.setLineWidth(2)
-        context.stroke(rect.insetBy(dx: 1, dy: 1))
-        let segments = max(Int(rect.width / 12), 1)
-        let filled = Int(CGFloat(segments) * CGFloat(value) / 100.0)
+        // Pixel-sized slots keep the context meter legible at a glance. The
+        // dark slots remain visible behind the cyan loaded blocks.
+        let segments = max(Int(rect.width / 16), 1)
+        let gap: CGFloat = 3
+        let segmentWidth = max((rect.width - gap * CGFloat(segments - 1)) / CGFloat(segments), 1)
+        let filled = Int((CGFloat(segments) * CGFloat(min(max(value, 0), 100)) / 100.0).rounded(.down))
         for index in 0..<segments {
-            let x = rect.minX + 3 + CGFloat(index) * ((rect.width - 6) / CGFloat(segments))
-            let width = max((rect.width - 10) / CGFloat(segments) - 2, 1)
+            let x = rect.minX + CGFloat(index) * (segmentWidth + gap)
             let segmentColor = index < filled ? color : PixelPalette.navy
-            fill(CGRect(x: x, y: rect.minY + 3, width: width, height: rect.height - 6), color: segmentColor, context: context)
+            fill(CGRect(x: x, y: rect.minY, width: segmentWidth, height: rect.height), color: segmentColor, context: context)
         }
     }
 

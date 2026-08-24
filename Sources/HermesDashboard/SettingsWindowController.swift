@@ -416,6 +416,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         static let runtimeOpacity = 40
         static let agentOpacity = 41
         static let sessionOpacity = 42
+        static let sessionCardOpacity = 43
     }
 
     private let model: DashboardModel
@@ -483,6 +484,8 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         addField(tag: FieldTag.agentOpacity, value: model.layout.agentOpacity, x: 300, y: 214, to: content)
         addLabel("SESSION", x: 390, y: 218, width: 90, to: content)
         addField(tag: FieldTag.sessionOpacity, value: model.layout.activeSessionOpacity, x: 480, y: 214, to: content)
+        addLabel("SESSION CARDS", x: 28, y: 178, width: 120, to: content)
+        addField(tag: FieldTag.sessionCardOpacity, value: model.layout.sessionCardOpacity, x: 160, y: 174, to: content)
 
         let note = NSTextField(wrappingLabelWithString: "X / Y values are design-canvas coordinates. Changes apply immediately and are saved for the next launch.")
         note.font = NSFont.systemFont(ofSize: 11)
@@ -534,7 +537,8 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
             FieldTag.sessionY: model.layout.activeSession.y,
             FieldTag.runtimeOpacity: model.layout.runtimeOpacity,
             FieldTag.agentOpacity: model.layout.agentOpacity,
-            FieldTag.sessionOpacity: model.layout.activeSessionOpacity
+            FieldTag.sessionOpacity: model.layout.activeSessionOpacity,
+            FieldTag.sessionCardOpacity: model.layout.sessionCardOpacity
         ]
         for (tag, value) in values { fields[tag]?.stringValue = format(value) }
     }
@@ -549,6 +553,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         layout.runtimeOpacity = min(max(value(FieldTag.runtimeOpacity), 0), 1)
         layout.agentOpacity = min(max(value(FieldTag.agentOpacity), 0), 1)
         layout.activeSessionOpacity = min(max(value(FieldTag.sessionOpacity), 0), 1)
+        layout.sessionCardOpacity = min(max(value(FieldTag.sessionCardOpacity), 0), 1)
         model.updateLayout(layout)
         reloadFields()
     }

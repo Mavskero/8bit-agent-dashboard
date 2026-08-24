@@ -215,6 +215,44 @@ struct DashboardLayout: Codable, Equatable {
     var runtimeOpacity: CGFloat
     var agentOpacity: CGFloat
     var activeSessionOpacity: CGFloat
+    var sessionCardOpacity: CGFloat
+
+    private enum CodingKeys: String, CodingKey {
+        case padding, runtimeStatus, hermesAgent, activeSession
+        case runtimeOpacity, agentOpacity, activeSessionOpacity, sessionCardOpacity
+    }
+
+    init(
+        padding: CGFloat,
+        runtimeStatus: DashboardModulePosition,
+        hermesAgent: DashboardModulePosition,
+        activeSession: DashboardModulePosition,
+        runtimeOpacity: CGFloat,
+        agentOpacity: CGFloat,
+        activeSessionOpacity: CGFloat,
+        sessionCardOpacity: CGFloat = 0.82
+    ) {
+        self.padding = padding
+        self.runtimeStatus = runtimeStatus
+        self.hermesAgent = hermesAgent
+        self.activeSession = activeSession
+        self.runtimeOpacity = runtimeOpacity
+        self.agentOpacity = agentOpacity
+        self.activeSessionOpacity = activeSessionOpacity
+        self.sessionCardOpacity = sessionCardOpacity
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        padding = try container.decode(CGFloat.self, forKey: .padding)
+        runtimeStatus = try container.decode(DashboardModulePosition.self, forKey: .runtimeStatus)
+        hermesAgent = try container.decode(DashboardModulePosition.self, forKey: .hermesAgent)
+        activeSession = try container.decode(DashboardModulePosition.self, forKey: .activeSession)
+        runtimeOpacity = try container.decode(CGFloat.self, forKey: .runtimeOpacity)
+        agentOpacity = try container.decode(CGFloat.self, forKey: .agentOpacity)
+        activeSessionOpacity = try container.decode(CGFloat.self, forKey: .activeSessionOpacity)
+        sessionCardOpacity = try container.decodeIfPresent(CGFloat.self, forKey: .sessionCardOpacity) ?? 0.82
+    }
 
     static let defaults = DashboardLayout(
         padding: 8,
@@ -223,7 +261,8 @@ struct DashboardLayout: Codable, Equatable {
         activeSession: DashboardModulePosition(x: 618, y: 417),
         runtimeOpacity: 0.92,
         agentOpacity: 0.92,
-        activeSessionOpacity: 0.92
+        activeSessionOpacity: 0.92,
+        sessionCardOpacity: 0.82
     )
 
     static func load() -> DashboardLayout {
