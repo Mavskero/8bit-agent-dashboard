@@ -249,6 +249,12 @@ private struct CodexTaskIndexEntry: Decodable {
     }
 }
 
+private struct CodexSnapshot {
+    var sessions: [SessionInfo]
+    var agentState: AgentState
+    var contextPercent: Int
+}
+
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
 
@@ -260,15 +266,18 @@ final class RuntimeStatusService {
     }
 
     private func read(source: RuntimeSource) -> RuntimeStatus? {
-        let codexTasks = source == .codex ? readCodexTasks() : []
+        let codexSnapshot = source == .codex ? readCodexSnapshot() : nil
         for url in candidateURLs(for: source) {
             guard let data = try? Data(contentsOf: url), let payload = try? JSONDecoder().decode(RuntimePayload.self, from: data) else { continue }
-            return map(payload, source: source, codexTasks: codexTasks)
+            return map(payload, source: source, codexSnapshot: codexSnapshot)
         }
-        if source == .codex, !codexTasks.isEmpty {
+        if source == .codex, let codexSnapshot {
             var status = RuntimeStatus.demo(source: source)
-            status.activeSession = codexTasks[0].title
-            status.sessions = codexTasks
+            status.activeSession = codexSnapshot.sessions.first?.title ?? status.activeSession
+            status.contextPercent = codexSnapshot.contextPercent
+            status.tokenPercent = codexSnapshot.contextPercent
+            status.agentState = codexSnapshot.agentState
+            status.sessions = codexSnapshot.sessions
             status.isLive = true
             return status
         }
@@ -294,7 +303,61 @@ final class RuntimeStatusService {
         return paths
     }
 
-    private func readCodexTasks() -> [SessionInfo] {
+    private func readCodexSnapshot() -> CodexSnapshot? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let catalogPath = home.appendingPathComponent(".codex/sqlite/codex-dev.db").path
+        let historyPath = home.appendingPathComponent(".codex/thread_history_1.sqlite").path
+        let statePath = home.appendingPathComponent(".codex/state_5.sqlite").path
+
+        let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC LIMIT 5;")
+        if !catalogRows.isEmpty {
+            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used FROM threads WHERE archived = 0;")
+            let states = Dictionary(uniqueKeysWithValues: stateRows.compactMap { row -> (String, [String: Any])? in
+                guard let id = row["id"] as? String else { return nil }
+                return (id, row)
+            })
+            let turnRows = readSQLiteRows(path: historyPath, query: "SELECT thread_id, status, started_at, completed_at FROM thread_turns ORDER BY started_at DESC;")
+            var latestTurns: [String: [String: Any]] = [:]
+            for row in turnRows {
+                guard let threadID = row["thread_id"] as? String else { continue }
+                let started = (row["started_at"] as? NSNumber)?.doubleValue ?? 0
+                let previous = (latestTurns[threadID]?["started_at"] as? NSNumber)?.doubleValue ?? -1
+                if started > previous { latestTurns[threadID] = row }
+            }
+
+            let sessions = catalogRows.compactMap { row -> SessionInfo? in
+                guard let threadID = row["thread_id"] as? String,
+                      let rawTitle = row["display_title"] as? String else { return nil }
+                let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty else { return nil }
+                let turn = latestTurns[threadID]
+                let status = normalizedSessionStatus(turn?["status"] as? String)
+                let state = states[threadID]
+                let usage = (state?["rollout_path"] as? String).flatMap(readTokenUsage)
+                let fallbackTokens = (state?["tokens_used"] as? NSNumber)?.doubleValue ?? 0
+                let contextPercent = usage?.percent ?? clamp(Int((fallbackTokens / 258400.0 * 100).rounded()), min: 0, max: 100)
+                let updatedAt = formatEpoch((row["source_updated_at"] as? NSNumber)?.doubleValue)
+                return SessionInfo(title: title, progress: contextPercent, status: status, updatedAt: updatedAt, contextPercent: contextPercent)
+            }
+            if !sessions.isEmpty {
+                let agentState: AgentState
+                if sessions.contains(where: { $0.status == "RUNNING" }) {
+                    agentState = .working
+                } else if sessions.first?.status == "ERROR" {
+                    agentState = .error
+                } else {
+                    agentState = .idle
+                }
+                return CodexSnapshot(sessions: sessions, agentState: agentState, contextPercent: sessions[0].contextPercent)
+            }
+        }
+
+        let legacySessions = readLegacyCodexTasks()
+        guard !legacySessions.isEmpty else { return nil }
+        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent)
+    }
+
+    private func readLegacyCodexTasks() -> [SessionInfo] {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".codex/session_index.jsonl")
         guard let data = try? Data(contentsOf: url), data.count < 20_000_000,
@@ -317,8 +380,9 @@ final class RuntimeStatusService {
             return SessionInfo(
                 title: title,
                 progress: 0,
-                status: "",
-                updatedAt: formatTaskDate(entry.updatedAt)
+                status: "DONE",
+                updatedAt: formatTaskDate(entry.updatedAt),
+                contextPercent: 0
             )
         }.prefix(5).map { $0 }
     }
@@ -337,10 +401,61 @@ final class RuntimeStatusService {
         return formatter.string(from: date)
     }
 
-    private func map(_ payload: RuntimePayload, source: RuntimeSource, codexTasks: [SessionInfo]) -> RuntimeStatus {
+    private func formatEpoch(_ value: Double?) -> String {
+        guard let value, value > 0 else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter.string(from: Date(timeIntervalSince1970: value))
+    }
+
+    private func readSQLiteRows(path: String, query: String) -> [[String: Any]] {
+        guard FileManager.default.fileExists(atPath: path),
+              let output = ProcessRunner.run(executable: "/usr/bin/sqlite3", arguments: ["-readonly", "-json", path, query]),
+              let data = output.data(using: .utf8),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return rows
+    }
+
+    private func readTokenUsage(path: String) -> (percent: Int, used: Double, limit: Double)? {
+        guard FileManager.default.fileExists(atPath: path),
+              let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else { return nil }
+        defer { try? handle.close() }
+        let end = (try? handle.seekToEnd()) ?? 0
+        let offset = end > 524_288 ? end - 524_288 : 0
+        handle.seek(toFileOffset: offset)
+        guard let data = try? handle.readToEnd(), let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline).reversed() {
+            guard line.contains("\"token_count\""),
+                  let lineData = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let payload = object["payload"] as? [String: Any],
+                  let info = payload["info"] as? [String: Any],
+                  let usage = (info["last_token_usage"] as? [String: Any]) ?? (info["total_token_usage"] as? [String: Any]),
+                  let usedTokens = (usage["total_tokens"] as? NSNumber)?.doubleValue,
+                  let contextLimit = (info["model_context_window"] as? NSNumber)?.doubleValue,
+                  contextLimit > 0 else { continue }
+            let percent = (usedTokens / contextLimit) * 100.0
+            return (clamp(Int(percent.rounded()), min: 0, max: 100), usedTokens, contextLimit)
+        }
+        return nil
+    }
+
+    private func normalizedSessionStatus(_ value: String?) -> String {
+        switch value?.lowercased() {
+        case "inprogress", "in_progress", "running", "working", "executing": return "RUNNING"
+        case "failed", "error", "errored", "interrupted": return "ERROR"
+        case "completed", "complete", "done", "success": return "DONE"
+        default: return "DONE"
+        }
+    }
+
+    private func map(_ payload: RuntimePayload, source: RuntimeSource, codexSnapshot: CodexSnapshot?) -> RuntimeStatus {
         let demo = RuntimeStatus.demo(source: source)
         let calculatedContext: Int
-        if let used = payload.contextUsedTokens, let limit = payload.contextLimitTokens, limit > 0 {
+        if let snapshot = codexSnapshot {
+            calculatedContext = snapshot.contextPercent
+        } else if let used = payload.contextUsedTokens, let limit = payload.contextLimitTokens, limit > 0 {
             calculatedContext = Int((used / limit * 100).rounded())
         } else {
             calculatedContext = Int((payload.contextPercent ?? Double(demo.contextPercent)).rounded())
@@ -350,12 +465,14 @@ final class RuntimeStatusService {
             return SessionInfo(
                 title: title,
                 progress: clamp(Int((item.progress ?? 0).rounded()), min: 0, max: 100),
-                status: item.status ?? "",
-                updatedAt: item.updatedAt ?? ""
+                status: normalizedSessionStatus(item.status),
+                updatedAt: item.updatedAt ?? "",
+                contextPercent: clamp(Int((item.progress ?? 0).rounded()), min: 0, max: 100)
             )
         } ?? demo.sessions
-        let sessionValues = codexTasks.isEmpty ? payloadSessions : codexTasks
-        let currentSession = codexTasks.first?.title ?? payload.activeSession ?? demo.activeSession
+        let sessionValues = codexSnapshot?.sessions ?? payloadSessions
+        let currentSession = codexSnapshot?.sessions.first?.title ?? payload.activeSession ?? demo.activeSession
+        let agentState = codexSnapshot?.agentState ?? AgentState(rawValue: payload.agentState ?? demo.agentState.rawValue)
 
         return RuntimeStatus(
             source: source,
@@ -364,11 +481,11 @@ final class RuntimeStatusService {
             fastMode: payload.fastMode ?? demo.fastMode,
             provider: (payload.provider ?? demo.provider).uppercased(),
             balance: payload.balance ?? demo.balance,
-            tokenPercent: clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
+            tokenPercent: codexSnapshot?.contextPercent ?? clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
             activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
-            agentState: AgentState(rawValue: payload.agentState ?? demo.agentState.rawValue),
+            agentState: agentState,
             sessions: Array(sessionValues.prefix(5)),
             isLive: true
         )

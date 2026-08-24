@@ -9,7 +9,9 @@ final class DashboardView: NSView {
     private let model: DashboardModel
     private var wallpaper: GIFAnimator?
     private var animationTimer: Timer?
+    private var clockBlinkTimer: Timer?
     private var phase = 0
+    private var clockColonVisible = true
     private let settingsButton: NSButton = {
         let button = SettingsButton(frame: .zero)
         button.setButtonType(.momentaryPushIn)
@@ -24,11 +26,11 @@ final class DashboardView: NSView {
     }()
 
     private let designSize = CGSize(width: 1280, height: 720)
-    // The canvas is split into a 7:9 upper/lower composition: 315pt above
-    // the divider and 405pt below it, including the small frame margins.
-    private let areaSplitY: CGFloat = 315
-    private let runtimeModuleHeight: CGFloat = 288
-    private let bottomModuleHeight: CGFloat = 385
+    // The flipped drawing canvas places the 405pt upper region above this
+    // divider, leaving a 315pt lower region for the two bottom modules.
+    private let areaSplitY: CGFloat = 405
+    private let runtimeModuleHeight: CGFloat = 378
+    private let bottomModuleHeight: CGFloat = 298
     private let clockFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -59,6 +61,10 @@ final class DashboardView: NSView {
             self?.phase += 1
             self?.needsDisplay = true
         }
+        clockBlinkTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.clockColonVisible.toggle()
+            self?.needsDisplay = true
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -67,6 +73,7 @@ final class DashboardView: NSView {
 
     deinit {
         animationTimer?.invalidate()
+        clockBlinkTimer?.invalidate()
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -158,7 +165,9 @@ final class DashboardView: NSView {
     private func drawTopArea(context: CGContext) {
         // Time and weather occupy one aligned visual row.
         let now = Date()
-        drawText(clockFormatter.string(from: now), key: .clock, at: CGPoint(x: 42, y: 48), context: context)
+        var clockText = clockFormatter.string(from: now)
+        if !clockColonVisible { clockText = clockText.replacingOccurrences(of: ":", with: " ") }
+        drawText(clockText, key: .clock, at: CGPoint(x: 42, y: 48), context: context)
         let weatherRect = CGRect(x: 560, y: 48, width: 128, height: 128)
         if let weatherImage = model.assetStore.weatherImage(condition: model.weather.condition, at: CACurrentMediaTime()) {
             PixelPainter.drawAsset(weatherImage, in: weatherRect, context: context)
@@ -263,35 +272,29 @@ final class DashboardView: NSView {
 
         var liveStyle = model.styles.style(for: .agent)
         liveStyle.pointSize *= 0.6
-        liveStyle.colorHex = PixelPalette.green.hexString
-        drawText("LIVE", key: .agent, at: CGPoint(x: agentOrigin.x + 510, y: agentOrigin.y + 18), context: context, style: liveStyle)
-        PixelPalette.green.setFill()
+        let liveColor = model.runtime.isLive ? PixelPalette.green : PixelPalette.cyanDim
+        liveStyle.colorHex = liveColor.hexString
+        drawText(model.runtime.isLive ? "LIVE" : "LOCAL", key: .agent, at: CGPoint(x: agentOrigin.x + 510, y: agentOrigin.y + 18), context: context, style: liveStyle)
+        liveColor.setFill()
         context.fill(CGRect(x: agentOrigin.x + 500, y: agentOrigin.y + 74, width: 8, height: 8))
 
         let sessionOrigin = model.layout.activeSession
         let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: bottomModuleHeight)
         PixelPainter.drawFrame(sessionRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.activeSessionOpacity))
         drawText("ACTIVE SESSION", key: .activeSessionTitle, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 16), context: context)
-        var activeMetaStyle = model.styles.style(for: .activeSessionName)
-        activeMetaStyle.pointSize *= 0.55
-        activeMetaStyle.colorHex = PixelPalette.cyan.hexString
-        drawText(model.runtime.elapsed, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 460, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
-        activeMetaStyle.colorHex = PixelPalette.green.hexString
-        drawText("RUNNING", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 526, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
-        let activeNameStyle = model.styles.style(for: .activeSessionName)
-        let activeName = fittedText(model.runtime.activeSession, style: activeNameStyle, maxWidth: 500)
-        drawText(activeName, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 46), context: context)
-        PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 79, width: 504, height: 23), value: model.runtime.contextPercent, color: PixelPalette.cyan, context: context)
-        activeMetaStyle.colorHex = PixelPalette.cyan.hexString
-        drawText("CTX \(model.runtime.contextPercent)%", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 542, y: sessionOrigin.y + 81), context: context, style: activeMetaStyle)
-
-        let recent = model.runtime.sessions
+        let recent = Array(model.runtime.sessions.prefix(5))
+        if let latest = recent.first {
+            // The newest session is a single full-width row. The four cards
+            // below intentionally use dropFirst() so it cannot be duplicated.
+            drawSessionCard(latest, rect: CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 48, width: 588, height: 76), context: context)
+        }
         let positions = [
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 122, width: 292, height: 62), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 122, width: 292, height: 62),
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 194, width: 292, height: 62), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 194, width: 292, height: 62),
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 266, width: 292, height: 62)
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 132, width: 292, height: 62),
+            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 132, width: 292, height: 62),
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 202, width: 292, height: 62),
+            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 202, width: 292, height: 62)
         ]
-        for (index, card) in recent.prefix(5).enumerated() {
+        for (index, card) in recent.dropFirst().prefix(4).enumerated() {
             drawSessionCard(card, rect: positions[index], context: context)
         }
     }
@@ -304,16 +307,18 @@ final class DashboardView: NSView {
         if !session.status.isEmpty || !session.updatedAt.isEmpty {
             var metaStyle = model.styles.style(for: .recentSession)
             metaStyle.pointSize *= 0.85
-            metaStyle.colorHex = PixelPalette.cyanDim.hexString
-            let meta = session.status.isEmpty ? session.updatedAt : session.status
+            metaStyle.colorHex = sessionStatusColor(session.status).hexString
+            let meta = [session.status, session.updatedAt].filter { !$0.isEmpty }.joined(separator: "  ")
             let metaWidth = PixelPainter.textWidth(meta, style: metaStyle)
             drawText(meta, key: .recentSession, at: CGPoint(x: rect.maxX - 12 - metaWidth, y: rect.minY + 8), context: context, style: metaStyle)
         }
-        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 30, width: rect.width - 106, height: 9), value: session.progress, color: session.progress == 100 ? PixelPalette.green : PixelPalette.cyan, context: context)
+        let contextValue = session.contextPercent > 0 ? session.contextPercent : session.progress
+        let progressColor = sessionStatusColor(session.status)
+        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 30, width: rect.width - 106, height: 9), value: contextValue, color: progressColor, context: context)
         var progressStyle = model.styles.style(for: .recentSession)
         progressStyle.pointSize *= 0.85
-        progressStyle.colorHex = (session.progress == 100 ? PixelPalette.green : PixelPalette.cyan).hexString
-        drawText("\(session.progress)%", key: .recentSession, at: CGPoint(x: rect.maxX - 82, y: rect.minY + 30), context: context, style: progressStyle)
+        progressStyle.colorHex = progressColor.hexString
+        drawText("CTX \(contextValue)%", key: .recentSession, at: CGPoint(x: rect.maxX - 82, y: rect.minY + 30), context: context, style: progressStyle)
     }
 
     private func fittedText(_ text: String, style: TextStyle, maxWidth: CGFloat) -> String {
@@ -348,6 +353,15 @@ final class DashboardView: NSView {
         case .done: return "COMPLETE"
         case .idle: return "STANDBY"
         case .error: return "ATTENTION"
+        }
+    }
+
+    private func sessionStatusColor(_ status: String) -> NSColor {
+        switch status.uppercased() {
+        case "DONE": return PixelPalette.green
+        case "ERROR": return PixelPalette.orange
+        case "RUNNING": return PixelPalette.cyan
+        default: return PixelPalette.cyanDim
         }
     }
 

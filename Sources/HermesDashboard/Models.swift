@@ -219,8 +219,8 @@ struct DashboardLayout: Codable, Equatable {
     static let defaults = DashboardLayout(
         padding: 8,
         runtimeStatus: DashboardModulePosition(x: 770, y: 26),
-        hermesAgent: DashboardModulePosition(x: 16, y: 327),
-        activeSession: DashboardModulePosition(x: 618, y: 327),
+        hermesAgent: DashboardModulePosition(x: 16, y: 417),
+        activeSession: DashboardModulePosition(x: 618, y: 417),
         runtimeOpacity: 0.92,
         agentOpacity: 0.92,
         activeSessionOpacity: 0.92
@@ -231,10 +231,10 @@ struct DashboardLayout: Codable, Equatable {
               var decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data) else {
             return .defaults
         }
-        // Keep existing users on the new 7:9 composition when they still have
-        // the previous default anchors, while preserving custom edits.
-        if decoded.hermesAgent.y == 492 || decoded.hermesAgent.y == 444 { decoded.hermesAgent.y = 327 }
-        if decoded.activeSession.y == 492 || decoded.activeSession.y == 444 { decoded.activeSession.y = 327 }
+        // Migrate the anchors used by the previous 2:1 and 7:9 compositions.
+        // Other coordinates are user edits and remain untouched.
+        if [492, 444, 327].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 417 }
+        if [492, 444, 327].contains(decoded.activeSession.y) { decoded.activeSession.y = 417 }
         return decoded
     }
 
@@ -351,6 +351,7 @@ struct SessionInfo {
     var progress: Int
     var status: String
     var updatedAt: String
+    var contextPercent: Int = 0
 }
 
 struct RuntimeStatus {
