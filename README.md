@@ -1,6 +1,6 @@
 # Hermes Dashboard
 
-这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放。
+这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放；画布上下区域按 3:2 比例分割。
 
 ## 最终目标设计图
 
@@ -19,7 +19,7 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改这些位置：Clock、Date、Temperature、Now Playing Artist、Now Playing Title、Runtime Status、Hermes Agent、Active Session Header、Active Session Name、Recent Sessions。`Active Session Header` 和 `Active Session Name` 是两个独立选项，分别控制模块标题和当前 session 名称。每一项都支持：
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改这些位置：Clock、Date、Temperature、Now Playing Artist、Now Playing Title、Runtime Status、Hermes Agent、Active Session Header、Active Session Name、Recent Sessions。`Active Session Header` 和 `Active Session Name` 是两个独立选项，分别控制模块标题和当前 session 名称。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixel Grid (built-in)`：兼容旧版本的内置 8bit 字体

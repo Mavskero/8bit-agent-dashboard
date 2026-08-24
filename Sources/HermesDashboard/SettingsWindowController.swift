@@ -118,7 +118,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let styleTitle = makeLabel("TEXT STYLE OVERRIDES")
         styleTitle.frame = NSRect(x: 28, y: 376, width: 300, height: 20)
         content.addSubview(styleTitle)
-        let columnHint = NSTextField(labelWithString: "POSITION                                      FONT FAMILY                         SIZE       COLOR")
+        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR")
         columnHint.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         columnHint.textColor = PixelPalette.cyanDim
         columnHint.frame = NSRect(x: 38, y: 353, width: 730, height: 16)
@@ -291,8 +291,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for (key, row) in styleRows { row.apply(style: model.styles.style(for: key)) }
     }
 
-    fileprivate func styleChanged(key: DashboardStyleKey, fontName: String, size: CGFloat, color: NSColor) {
-        model.updateStyle(TextStyle(fontName: fontName, pointSize: max(size, 6), colorHex: color.hexString), for: key)
+    fileprivate func styleChanged(key: DashboardStyleKey, fontName: String, size: CGFloat, color: NSColor, x: CGFloat, y: CGFloat) {
+        model.updateStyle(
+            TextStyle(fontName: fontName, pointSize: max(size, 6), colorHex: color.hexString, x: x, y: y),
+            for: key
+        )
     }
 }
 
@@ -300,6 +303,8 @@ private final class StyleRow: NSView {
     let key: DashboardStyleKey
     weak var owner: SettingsWindowController?
     private let fontPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let xField = NSTextField(string: "")
+    private let yField = NSTextField(string: "")
     private let sizeField = NSTextField(string: "")
     private let colorWell = NSColorWell(frame: .zero)
 
@@ -318,24 +323,34 @@ private final class StyleRow: NSView {
         let label = NSTextField(labelWithString: key.displayName)
         label.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         label.textColor = PixelPalette.cream
-        label.frame = NSRect(x: 10, y: 10, width: 190, height: 18)
+        label.frame = NSRect(x: 10, y: 10, width: 142, height: 18)
         addSubview(label)
+
+        for field in [xField, yField] {
+            field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            field.alignment = .right
+            field.target = self
+            field.action = #selector(positionChanged(_:))
+            addSubview(field)
+        }
+        xField.frame = NSRect(x: 154, y: 7, width: 52, height: 24)
+        yField.frame = NSRect(x: 212, y: 7, width: 52, height: 24)
 
         fontPopup.addItem(withTitle: "Pixel Grid (built-in)")
         fontPopup.addItems(withTitles: NSFontManager.shared.availableFontFamilies.sorted())
-        fontPopup.frame = NSRect(x: 205, y: 6, width: 300, height: 26)
+        fontPopup.frame = NSRect(x: 274, y: 6, width: 235, height: 26)
         fontPopup.target = self
         fontPopup.action = #selector(fontChanged(_:))
         addSubview(fontPopup)
 
         sizeField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         sizeField.alignment = .right
-        sizeField.frame = NSRect(x: 516, y: 7, width: 58, height: 24)
+        sizeField.frame = NSRect(x: 518, y: 7, width: 52, height: 24)
         sizeField.target = self
         sizeField.action = #selector(sizeChanged(_:))
         addSubview(sizeField)
 
-        colorWell.frame = NSRect(x: 594, y: 5, width: 48, height: 28)
+        colorWell.frame = NSRect(x: 586, y: 5, width: 48, height: 28)
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
         addSubview(colorWell)
@@ -358,6 +373,8 @@ private final class StyleRow: NSView {
             if fontPopup.item(withTitle: style.fontName) == nil { fontPopup.addItem(withTitle: style.fontName) }
             fontPopup.selectItem(withTitle: style.fontName)
         }
+        xField.stringValue = format(style.x)
+        yField.stringValue = format(style.y)
         sizeField.stringValue = String(Int(style.pointSize.rounded()))
         colorWell.color = style.color
     }
@@ -367,12 +384,24 @@ private final class StyleRow: NSView {
     }
 
     private func sendChange() {
-        owner?.styleChanged(key: key, fontName: selectedFontName(), size: CGFloat(Double(sizeField.stringValue) ?? 12), color: colorWell.color)
+        owner?.styleChanged(
+            key: key,
+            fontName: selectedFontName(),
+            size: CGFloat(Double(sizeField.stringValue) ?? 12),
+            color: colorWell.color,
+            x: CGFloat(Double(xField.stringValue) ?? 0),
+            y: CGFloat(Double(yField.stringValue) ?? 0)
+        )
     }
 
     @objc private func fontChanged(_ sender: NSPopUpButton) { sendChange() }
     @objc private func sizeChanged(_ sender: NSTextField) { sendChange() }
     @objc private func colorChanged(_ sender: NSColorWell) { sendChange() }
+    @objc private func positionChanged(_ sender: NSTextField) { sendChange() }
+
+    private func format(_ value: CGFloat) -> String {
+        String(format: "%.2f", Double(value)).replacingOccurrences(of: ".00", with: "")
+    }
 }
 
 private final class LayoutSettingsWindowController: NSWindowController, NSWindowDelegate {

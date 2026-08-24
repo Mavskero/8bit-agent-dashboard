@@ -24,6 +24,11 @@ final class DashboardView: NSView {
     }()
 
     private let designSize = CGSize(width: 1280, height: 720)
+    // The canvas is split into a 3:2 upper/lower composition: 432pt above
+    // the divider and 288pt below it, including the small frame margins.
+    private let areaSplitY: CGFloat = 432
+    private let runtimeModuleHeight: CGFloat = 400
+    private let bottomModuleHeight: CGFloat = 248
     private let clockFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -182,15 +187,15 @@ final class DashboardView: NSView {
 
     private func drawRuntimeStatus(context: CGContext) {
         let origin = model.layout.runtimeStatus
-        let rect = CGRect(x: origin.x, y: origin.y, width: 484, height: 432)
+        let rect = CGRect(x: origin.x, y: origin.y, width: 484, height: runtimeModuleHeight)
         PixelPainter.drawFrame(rect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.runtimeOpacity))
         var runtimeStyle = model.styles.style(for: .runtime)
-        PixelPainter.drawText("RUNTIME STATUS", at: CGPoint(x: origin.x + 30, y: origin.y + 22), style: runtimeStyle, context: context)
+        drawText("RUNTIME STATUS", key: .runtime, at: CGPoint(x: origin.x + 30, y: origin.y + 22), context: context, style: runtimeStyle)
         let sourceLabel = model.runtime.source == .codex ? "CODEX" : "HERMES"
         runtimeStyle.pointSize *= 0.55
         runtimeStyle.colorHex = PixelPalette.green.hexString
         let sourceWidth = PixelPainter.textWidth(sourceLabel, style: runtimeStyle)
-        PixelPainter.drawText(sourceLabel, at: CGPoint(x: origin.x + 438 - sourceWidth, y: origin.y + 26), style: runtimeStyle, context: context)
+        drawText(sourceLabel, key: .runtime, at: CGPoint(x: origin.x + 438 - sourceWidth, y: origin.y + 26), context: context, style: runtimeStyle)
 
         let rows: [(String, String, NSColor, Int)] = [
             ("MODEL", model.runtime.model, PixelPalette.cyan, 0),
@@ -206,7 +211,7 @@ final class DashboardView: NSView {
             PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + 28, y: rowY + 5), kind: row.3, color: row.2, context: context)
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
-            PixelPainter.drawText(row.0, at: CGPoint(x: origin.x + 80, y: rowY + 4), style: rowStyle, context: context)
+            drawText(row.0, key: .runtime, at: CGPoint(x: origin.x + 80, y: rowY + 4), context: context, style: rowStyle)
             PixelPalette.border.setFill()
             let labelEnd = origin.x + 80 + PixelPainter.textWidth(row.0, style: rowStyle)
             for dot in stride(from: Int(labelEnd + 16), to: Int(origin.x + 350), by: 10) {
@@ -215,7 +220,7 @@ final class DashboardView: NSView {
             if row.0 == "FASTMODE" {
                 var fastStyle = rowStyle
                 fastStyle.colorHex = (row.1 == "ON" ? PixelPalette.cyan : PixelPalette.orange).hexString
-                PixelPainter.drawText(row.1, at: CGPoint(x: origin.x + 360, y: rowY + 4), style: fastStyle, context: context)
+                drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 360, y: rowY + 4), context: context, style: fastStyle)
                 PixelPalette.cyan.setFill()
                 context.fill(CGRect(x: origin.x + 418, y: rowY + 5, width: 42, height: 25))
                 PixelPalette.navy.setFill()
@@ -224,7 +229,7 @@ final class DashboardView: NSView {
                 var valueStyle = rowStyle
                 valueStyle.colorHex = (row.2 == PixelPalette.cyan ? PixelPalette.cyan : (row.0 == "THINKING" ? PixelPalette.orange : row.2)).hexString
                 let valueWidth = PixelPainter.textWidth(row.1, style: valueStyle)
-                PixelPainter.drawText(row.1, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), style: valueStyle, context: context)
+                drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
             }
             row.2.setFill()
             context.fill(CGRect(x: origin.x + 469, y: rowY + 12, width: 7, height: 7))
@@ -233,55 +238,55 @@ final class DashboardView: NSView {
 
     private func drawBottomArea(context: CGContext) {
         let agentOrigin = model.layout.hermesAgent
-        let agentRect = CGRect(x: agentOrigin.x, y: agentOrigin.y, width: 584, height: 210)
+        let agentRect = CGRect(x: agentOrigin.x, y: agentOrigin.y, width: 584, height: bottomModuleHeight)
         PixelPainter.drawFrame(agentRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.agentOpacity))
-        PixelPainter.drawText("HERMES AGENT", at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), style: model.styles.style(for: .agent), context: context)
+        drawText("HERMES AGENT", key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
         var agentStateStyle = model.styles.style(for: .agent)
         agentStateStyle.pointSize *= 0.72
         let currentState = model.runtime.agentState
         if let agentImage = model.assetStore.agentImage(state: currentState, at: CACurrentMediaTime()) {
-            PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 140), context: context)
+            PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 164), context: context)
         } else {
             PixelPainter.drawAvatar(at: CGPoint(x: agentOrigin.x + 42, y: agentOrigin.y + 56), scale: 3.0, state: currentState, phase: phase, context: context)
         }
 
         PixelPalette.border.setFill()
-        context.fill(CGRect(x: agentOrigin.x + 260, y: agentOrigin.y + 54, width: 1, height: 138))
+        context.fill(CGRect(x: agentOrigin.x + 260, y: agentOrigin.y + 54, width: 1, height: 180))
         var stateHintStyle = model.styles.style(for: .agent)
         stateHintStyle.pointSize *= 0.42
         stateHintStyle.colorHex = PixelPalette.cyanDim.hexString
-        PixelPainter.drawText("CURRENT STATE", at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 66), style: stateHintStyle, context: context)
-        PixelPainter.drawText(currentState.label, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 92), style: agentStateStyle, context: context)
+        drawText("CURRENT STATE", key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 66), context: context, style: stateHintStyle)
+        drawText(currentState.label, key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 92), context: context, style: agentStateStyle)
         var stateDetailStyle = stateHintStyle
         stateDetailStyle.colorHex = PixelPalette.cream.hexString
-        PixelPainter.drawText(stateDescription(for: currentState), at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 132), style: stateDetailStyle, context: context)
+        drawText(stateDescription(for: currentState), key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 132), context: context, style: stateDetailStyle)
 
         var liveStyle = model.styles.style(for: .agent)
         liveStyle.pointSize *= 0.6
         liveStyle.colorHex = PixelPalette.green.hexString
-        PixelPainter.drawText("LIVE", at: CGPoint(x: agentOrigin.x + 510, y: agentOrigin.y + 18), style: liveStyle, context: context)
+        drawText("LIVE", key: .agent, at: CGPoint(x: agentOrigin.x + 510, y: agentOrigin.y + 18), context: context, style: liveStyle)
         PixelPalette.green.setFill()
         context.fill(CGRect(x: agentOrigin.x + 500, y: agentOrigin.y + 74, width: 8, height: 8))
 
         let sessionOrigin = model.layout.activeSession
-        let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: 210)
+        let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: bottomModuleHeight)
         PixelPainter.drawFrame(sessionRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.activeSessionOpacity))
-        PixelPainter.drawText("ACTIVE SESSION", at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 16), style: model.styles.style(for: .activeSessionTitle), context: context)
+        drawText("ACTIVE SESSION", key: .activeSessionTitle, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 16), context: context)
         var activeMetaStyle = model.styles.style(for: .activeSessionName)
         activeMetaStyle.pointSize *= 0.55
         activeMetaStyle.colorHex = PixelPalette.cyan.hexString
-        PixelPainter.drawText(model.runtime.elapsed, at: CGPoint(x: sessionOrigin.x + 460, y: sessionOrigin.y + 18), style: activeMetaStyle, context: context)
+        drawText(model.runtime.elapsed, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 460, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
         activeMetaStyle.colorHex = PixelPalette.green.hexString
-        PixelPainter.drawText("RUNNING", at: CGPoint(x: sessionOrigin.x + 526, y: sessionOrigin.y + 18), style: activeMetaStyle, context: context)
-        PixelPainter.drawText(model.runtime.activeSession, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 46), style: model.styles.style(for: .activeSessionName), context: context)
+        drawText("RUNNING", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 526, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
+        drawText(model.runtime.activeSession, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 46), context: context)
         PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 79, width: 504, height: 23), value: model.runtime.contextPercent, color: PixelPalette.cyan, context: context)
         activeMetaStyle.colorHex = PixelPalette.cyan.hexString
-        PixelPainter.drawText("CTX \(model.runtime.contextPercent)%", at: CGPoint(x: sessionOrigin.x + 542, y: sessionOrigin.y + 81), style: activeMetaStyle, context: context)
+        drawText("CTX \(model.runtime.contextPercent)%", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 542, y: sessionOrigin.y + 81), context: context, style: activeMetaStyle)
 
         let recent = model.runtime.sessions.count == 4 ? model.runtime.sessions : RuntimeStatus.demo(source: model.runtime.source).sessions
         let positions = [
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 118, width: 292, height: 38), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 118, width: 292, height: 38),
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 162, width: 292, height: 38), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 162, width: 292, height: 38)
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 132, width: 292, height: 40), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 132, width: 292, height: 40),
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 184, width: 292, height: 40), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 184, width: 292, height: 40)
         ]
         for (index, card) in recent.prefix(4).enumerated() {
             drawSessionCard(card, rect: positions[index], context: context)
@@ -295,17 +300,27 @@ final class DashboardView: NSView {
             var metaStyle = model.styles.style(for: .recentSession)
             metaStyle.pointSize *= 0.85
             metaStyle.colorHex = PixelPalette.cyanDim.hexString
-            PixelPainter.drawText(session.updatedAt, at: CGPoint(x: rect.maxX - 72, y: rect.minY + 8), style: metaStyle, context: context)
+            drawText(session.updatedAt, key: .recentSession, at: CGPoint(x: rect.maxX - 72, y: rect.minY + 8), context: context, style: metaStyle)
         }
         PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 25, width: rect.width - 106, height: 9), value: session.progress, color: session.progress == 100 ? PixelPalette.green : PixelPalette.cyan, context: context)
         var progressStyle = model.styles.style(for: .recentSession)
         progressStyle.pointSize *= 0.85
         progressStyle.colorHex = (session.progress == 100 ? PixelPalette.green : PixelPalette.cyan).hexString
-        PixelPainter.drawText("\(session.progress)%", at: CGPoint(x: rect.maxX - 82, y: rect.minY + 25), style: progressStyle, context: context)
+        drawText("\(session.progress)%", key: .recentSession, at: CGPoint(x: rect.maxX - 82, y: rect.minY + 25), context: context, style: progressStyle)
     }
 
     private func drawText(_ text: String, key: DashboardStyleKey, at point: CGPoint, context: CGContext) {
-        PixelPainter.drawText(text, at: point, style: model.styles.style(for: key), context: context)
+        drawText(text, key: key, at: point, context: context, style: model.styles.style(for: key))
+    }
+
+    private func drawText(_ text: String, key: DashboardStyleKey, at point: CGPoint, context: CGContext, style: TextStyle) {
+        let position = model.styles.style(for: key)
+        let defaultPosition = key.defaultPosition
+        let adjustedPoint = CGPoint(
+            x: point.x + position.x - defaultPosition.x,
+            y: point.y + position.y - defaultPosition.y
+        )
+        PixelPainter.drawText(text, at: adjustedPoint, style: style, context: context)
     }
 
     private func stateDescription(for state: AgentState) -> String {
@@ -321,8 +336,8 @@ final class DashboardView: NSView {
     private func drawOuterFrame(context: CGContext) {
         PixelPainter.drawFrame(CGRect(x: 8, y: 8, width: 1264, height: 704), color: PixelPalette.borderBright, context: context)
         PixelPalette.border.setFill()
-        context.fill(CGRect(x: 8, y: 474, width: 1264, height: 5))
+        context.fill(CGRect(x: 8, y: areaSplitY, width: 1264, height: 5))
         PixelPalette.borderBright.setFill()
-        context.fill(CGRect(x: 18, y: 476, width: 1244, height: 2))
+        context.fill(CGRect(x: 18, y: areaSplitY + 2, width: 1244, height: 2))
     }
 }

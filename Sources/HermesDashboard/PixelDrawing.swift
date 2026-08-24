@@ -320,7 +320,7 @@ struct PixelPainter {
         PixelPalette.ink.setFill()
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         navy.setFill()
-        context.fill(CGRect(x: 0, y: height * 0.64, width: width, height: height * 0.36))
+        context.fill(CGRect(x: 0, y: height * 0.60, width: width, height: height * 0.40))
 
         let stars: [(CGFloat, CGFloat, CGFloat)] = [
             (30, 24, 2), (190, 52, 2), (404, 30, 2), (690, 52, 2), (734, 96, 2), (52, 244, 2),
@@ -329,29 +329,8 @@ struct PixelPainter {
         cream.setFill()
         for star in stars { context.fill(CGRect(x: star.0, y: star.1, width: star.2, height: star.2)) }
 
-        let buildings: [(CGFloat, CGFloat, CGFloat, CGFloat, NSColor)] = [
-            (330, 408, 48, 52, border), (370, 378, 36, 82, borderBright), (406, 420, 58, 40, border),
-            (468, 388, 48, 72, border), (520, 414, 36, 46, borderBright), (562, 364, 52, 96, border),
-            (620, 402, 42, 58, borderBright), (674, 346, 58, 114, border), (740, 386, 46, 74, borderBright),
-            (794, 410, 36, 50, border)
-        ]
-        for building in buildings {
-            building.4.setFill()
-            context.fill(CGRect(x: building.0, y: building.1, width: building.2, height: building.3))
-            for row in stride(from: building.1 + 12, through: building.1 + building.3 - 10, by: 16) {
-                for column in stride(from: building.0 + 10, through: building.0 + building.2 - 10, by: 18) {
-                    let color = ((Int(row) + Int(column)) % 3 == 0) ? orange : cyanDim
-                    color.setFill()
-                    context.fill(CGRect(x: column, y: row, width: 5, height: 6))
-                }
-            }
-        }
     }
 
     private static var cream: NSColor { PixelPalette.cream }
     private static var navy: NSColor { PixelPalette.navy }
-    private static var border: NSColor { PixelPalette.border }
-    private static var borderBright: NSColor { PixelPalette.borderBright }
-    private static var orange: NSColor { PixelPalette.orange }
-    private static var cyanDim: NSColor { PixelPalette.cyanDim }
 }

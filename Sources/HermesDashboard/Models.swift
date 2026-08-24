@@ -42,6 +42,35 @@ struct TextStyle: Codable, Equatable {
     var fontName: String
     var pointSize: CGFloat
     var colorHex: String
+    /// The base position for this text group in design-canvas coordinates.
+    /// Panel-contained styles use coordinates relative to their panel origin.
+    var x: CGFloat
+    var y: CGFloat
+
+    private enum CodingKeys: String, CodingKey {
+        case fontName
+        case pointSize
+        case colorHex
+        case x
+        case y
+    }
+
+    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0) {
+        self.fontName = fontName
+        self.pointSize = pointSize
+        self.colorHex = colorHex
+        self.x = x
+        self.y = y
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fontName = try container.decode(String.self, forKey: .fontName)
+        pointSize = try container.decode(CGFloat.self, forKey: .pointSize)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        x = try container.decodeIfPresent(CGFloat.self, forKey: .x) ?? 0
+        y = try container.decodeIfPresent(CGFloat.self, forKey: .y) ?? 0
+    }
 
     static var defaultFontName: String {
         silkscreenRegular
@@ -76,6 +105,23 @@ enum DashboardStyleKey: String, CaseIterable {
         case .recentSession: return "Recent Sessions"
         }
     }
+
+    /// Default anchor for the style row. For panel styles this is relative to
+    /// the panel; the dashboard applies edits as a group offset.
+    var defaultPosition: CGPoint {
+        switch self {
+        case .clock: return CGPoint(x: 42, y: 48)
+        case .date: return CGPoint(x: 42, y: 186)
+        case .temperature: return CGPoint(x: 66, y: 186)
+        case .artist: return CGPoint(x: 42, y: 252)
+        case .title: return CGPoint(x: 42, y: 287)
+        case .runtime: return CGPoint(x: 30, y: 22)
+        case .agent: return CGPoint(x: 18, y: 18)
+        case .activeSessionTitle: return CGPoint(x: 24, y: 16)
+        case .activeSessionName: return CGPoint(x: 24, y: 46)
+        case .recentSession: return CGPoint(x: 12, y: 8)
+        }
+    }
 }
 
 struct DashboardStyles: Codable, Equatable {
@@ -84,16 +130,16 @@ struct DashboardStyles: Codable, Equatable {
     static var defaults: DashboardStyles {
         let font = TextStyle.defaultFontName
         return DashboardStyles(values: [
-            DashboardStyleKey.clock.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 112, colorHex: "F2E4C9"),
-            DashboardStyleKey.date.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "F2E4C9"),
-            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "43E0DC"),
-            DashboardStyleKey.artist.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC"),
-            DashboardStyleKey.title.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 49, colorHex: "F2E4C9"),
-            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
-            DashboardStyleKey.agent.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC"),
-            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
-            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
-            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: font, pointSize: 14, colorHex: "F2E4C9")
+            DashboardStyleKey.clock.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 112, colorHex: "F2E4C9", x: 42, y: 48),
+            DashboardStyleKey.date.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "F2E4C9", x: 42, y: 186),
+            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "43E0DC", x: 66, y: 186),
+            DashboardStyleKey.artist.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC", x: 42, y: 252),
+            DashboardStyleKey.title.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 49, colorHex: "F2E4C9", x: 42, y: 287),
+            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 30, y: 22),
+            DashboardStyleKey.agent.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC", x: 18, y: 18),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 24, y: 16),
+            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 24, y: 46),
+            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: font, pointSize: 14, colorHex: "F2E4C9", x: 12, y: 8)
         ])
     }
 
@@ -114,21 +160,34 @@ struct DashboardStyles: Codable, Equatable {
         let shouldMigrateLegacyPixelStyles = !UserDefaults.standard.bool(forKey: "didMigrateLegacyPixelStyles")
         for key in DashboardStyleKey.allCases {
             if let saved = decoded.values[key.rawValue] {
-                if shouldMigrateLegacyPixelStyles && saved.fontName == TextStyle.builtInPixelFont {
-                    var migrated = saved
-                    migrated.fontName = (key == .clock || key == .title) ? TextStyle.silkscreenBold : TextStyle.silkscreenRegular
-                    merged.values[key.rawValue] = migrated
-                } else {
-                    merged.values[key.rawValue] = saved
+                var migrated = saved
+                // Styles saved before position editing do not have x/y keys.
+                // Restore the corresponding design anchor instead of treating
+                // the missing values as an intentional (0, 0) position.
+                if migrated.x == 0 && migrated.y == 0 {
+                    migrated.x = key.defaultPosition.x
+                    migrated.y = key.defaultPosition.y
                 }
+                if shouldMigrateLegacyPixelStyles && migrated.fontName == TextStyle.builtInPixelFont {
+                    migrated.fontName = (key == .clock || key == .title) ? TextStyle.silkscreenBold : TextStyle.silkscreenRegular
+                }
+                merged.values[key.rawValue] = migrated
             }
         }
         if let legacyActiveSession = decoded.values["activeSession"] {
+            var legacyTitle = legacyActiveSession
+            var legacyName = legacyActiveSession
+            if legacyTitle.x == 0 && legacyTitle.y == 0 {
+                legacyTitle.x = DashboardStyleKey.activeSessionTitle.defaultPosition.x
+                legacyTitle.y = DashboardStyleKey.activeSessionTitle.defaultPosition.y
+                legacyName.x = DashboardStyleKey.activeSessionName.defaultPosition.x
+                legacyName.y = DashboardStyleKey.activeSessionName.defaultPosition.y
+            }
             if decoded.values[DashboardStyleKey.activeSessionTitle.rawValue] == nil {
-                merged.values[DashboardStyleKey.activeSessionTitle.rawValue] = legacyActiveSession
+                merged.values[DashboardStyleKey.activeSessionTitle.rawValue] = legacyTitle
             }
             if decoded.values[DashboardStyleKey.activeSessionName.rawValue] == nil {
-                merged.values[DashboardStyleKey.activeSessionName.rawValue] = legacyActiveSession
+                merged.values[DashboardStyleKey.activeSessionName.rawValue] = legacyName
             }
         }
         if shouldMigrateLegacyPixelStyles {
@@ -160,8 +219,8 @@ struct DashboardLayout: Codable, Equatable {
     static let defaults = DashboardLayout(
         padding: 8,
         runtimeStatus: DashboardModulePosition(x: 770, y: 26),
-        hermesAgent: DashboardModulePosition(x: 16, y: 492),
-        activeSession: DashboardModulePosition(x: 618, y: 492),
+        hermesAgent: DashboardModulePosition(x: 16, y: 444),
+        activeSession: DashboardModulePosition(x: 618, y: 444),
         runtimeOpacity: 0.92,
         agentOpacity: 0.92,
         activeSessionOpacity: 0.92
@@ -169,9 +228,13 @@ struct DashboardLayout: Codable, Equatable {
 
     static func load() -> DashboardLayout {
         guard let data = UserDefaults.standard.data(forKey: "dashboardLayout"),
-              let decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data) else {
+              var decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data) else {
             return .defaults
         }
+        // Keep existing users on the new 3:2 composition when they still have
+        // the original bottom-module anchors, while preserving custom edits.
+        if decoded.hermesAgent.y == 492 { decoded.hermesAgent.y = 444 }
+        if decoded.activeSession.y == 492 { decoded.activeSession.y = 444 }
         return decoded
     }
 
