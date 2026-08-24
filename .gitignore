@@ -1,0 +1,12 @@
+.DS_Store
+
+# Local build products and module caches
+build/
+
+# Generated previews and temporary work notes
+outputs/*
+work/
+
+# Keep the final design and distributable artifact in version control.
+!outputs/HermesDashboard.app.zip
+!outputs/hermes-8bit-dashboard-weather-nowplaying-final.png

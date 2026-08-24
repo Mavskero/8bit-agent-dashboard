@@ -1,0 +1,19 @@
+{
+  "model": "GPT-5",
+  "thinking": "HIGH",
+  "fastMode": true,
+  "provider": "OPENAI",
+  "balance": "$18.42",
+  "tokenPercent": 72,
+  "activeSession": "Refactor telemetry pipeline",
+  "elapsed": "08:41",
+  "contextUsedTokens": 68000,
+  "contextLimitTokens": 100000,
+  "agentState": "working",
+  "sessions": [
+    { "title": "Build dashboard shell", "progress": 100, "status": "DONE", "updatedAt": "18:32" },
+    { "title": "Tune pixel avatar", "progress": 82, "status": "", "updatedAt": "17:05" },
+    { "title": "API health check", "progress": 46, "status": "", "updatedAt": "15:47" },
+    { "title": "Write release notes", "progress": 24, "status": "", "updatedAt": "13:22" }
+  ]
+}
