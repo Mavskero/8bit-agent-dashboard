@@ -30,7 +30,7 @@ final class DashboardView: NSView {
     // divider, leaving a 315pt lower region for the two bottom modules.
     private let areaSplitY: CGFloat = 405
     private let runtimeModuleHeight: CGFloat = 378
-    private let bottomModuleHeight: CGFloat = 298
+    private let bottomModuleHeight: CGFloat = 288
     private let clockFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -91,13 +91,13 @@ final class DashboardView: NSView {
         let offsetX = (bounds.width - canvasSize.width * scale) / 2
         let offsetY = (bounds.height - canvasSize.height * scale) / 2
         let runtime = model.layout.runtimeStatus
-        let gearDesignX = runtime.x + 444
-        let gearDesignY = runtime.y + 13
+        let gearDesignX = runtime.x + 433
+        let gearDesignY = runtime.y + 7
         settingsButton.frame = CGRect(
             x: offsetX + (padding + gearDesignX) * scale,
-            y: offsetY + (padding + designSize.height - gearDesignY - 30) * scale,
-            width: 30 * scale,
-            height: 30 * scale
+            y: offsetY + (padding + designSize.height - gearDesignY - 42) * scale,
+            width: 42 * scale,
+            height: 42 * scale
         ).integral
     }
 
@@ -227,7 +227,7 @@ final class DashboardView: NSView {
         ]
 
         for (index, row) in rows.enumerated() {
-            let rowY = origin.y + 52 + CGFloat(index) * 35
+            let rowY = origin.y + 62 + CGFloat(index) * 35
             PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + 28, y: rowY + 5), kind: row.3, color: row.2, context: context)
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
@@ -251,8 +251,6 @@ final class DashboardView: NSView {
                 let valueWidth = PixelPainter.textWidth(row.1, style: valueStyle)
                 drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
             }
-            row.2.setFill()
-            context.fill(CGRect(x: origin.x + 469, y: rowY + 12, width: 7, height: 7))
         }
     }
 
@@ -291,23 +289,23 @@ final class DashboardView: NSView {
 
         let sessionOrigin = model.layout.activeSession
         let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: bottomModuleHeight)
-        PixelPainter.drawFrame(sessionRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.activeSessionOpacity))
-        let latestRect = CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 12, width: 596, height: 112)
-        PixelPainter.drawFrame(latestRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.navy.withAlphaComponent(model.layout.sessionCardOpacity))
+        PixelPainter.drawFrame(sessionRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.activeSessionOpacity))
+        let latestRect = CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 10, width: 596, height: 108)
+        PixelPainter.drawFrame(latestRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.navy.withAlphaComponent(model.layout.sessionCardOpacity))
         drawText("ACTIVE SESSION", key: .activeSessionTitle, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 22), context: context)
         let recent = Array(model.runtime.sessions.prefix(5))
         if let latest = recent.first {
             let latestStyle = model.styles.style(for: .activeSessionName)
             let latestTitle = fittedText(latest.title, style: latestStyle, maxWidth: 500)
-            drawText(latestTitle, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 56), context: context)
-            drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 30, y: latestRect.minY + 24), context: context)
-            PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 91, width: 548, height: 12), value: sessionContextValue(latest), color: PixelPalette.cyan, context: context)
+            drawText(latestTitle, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 52), context: context)
+            drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 30, y: latestRect.minY + 23), context: context)
+            PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 548, height: 14), value: sessionContextValue(latest), color: PixelPalette.cyan, context: context)
         }
         let positions = [
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 132, width: 292, height: 62),
-            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 132, width: 292, height: 62),
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 202, width: 292, height: 62),
-            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 202, width: 292, height: 62)
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 124, width: 292, height: 76),
+            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 124, width: 292, height: 76),
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 202, width: 292, height: 76),
+            CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 202, width: 292, height: 76)
         ]
         // The latest session lives in the shared header frame above; only the
         // remaining four sessions are assigned to these child frames.
@@ -320,9 +318,9 @@ final class DashboardView: NSView {
         PixelPainter.drawFrame(rect, color: PixelPalette.border, context: context, fill: PixelPalette.navy.withAlphaComponent(model.layout.sessionCardOpacity))
         let titleStyle = model.styles.style(for: .recentSession)
         let title = fittedText(session.title, style: titleStyle, maxWidth: rect.width - 54)
-        drawText(title, key: .recentSession, at: CGPoint(x: rect.minX + 12, y: rect.minY + 10), context: context)
-        drawSessionStatusLamp(session.status, at: CGPoint(x: rect.maxX - 26, y: rect.minY + 17), context: context)
-        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 39, width: rect.width - 24, height: 12), value: sessionContextValue(session), color: PixelPalette.cyan, context: context)
+        drawText(title, key: .recentSession, at: CGPoint(x: rect.minX + 12, y: rect.minY + 12), context: context)
+        drawSessionStatusLamp(session.status, at: CGPoint(x: rect.maxX - 26, y: rect.minY + 19), context: context)
+        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 46, width: rect.width - 24, height: 14), value: sessionContextValue(session), color: PixelPalette.cyan, context: context)
     }
 
     private func sessionContextValue(_ session: SessionInfo) -> Int {

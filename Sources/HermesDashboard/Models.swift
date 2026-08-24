@@ -257,8 +257,8 @@ struct DashboardLayout: Codable, Equatable {
     static let defaults = DashboardLayout(
         padding: 8,
         runtimeStatus: DashboardModulePosition(x: 770, y: 26),
-        hermesAgent: DashboardModulePosition(x: 16, y: 417),
-        activeSession: DashboardModulePosition(x: 618, y: 417),
+        hermesAgent: DashboardModulePosition(x: 16, y: 420),
+        activeSession: DashboardModulePosition(x: 618, y: 420),
         runtimeOpacity: 0.92,
         agentOpacity: 0.92,
         activeSessionOpacity: 0.92,
@@ -272,8 +272,8 @@ struct DashboardLayout: Codable, Equatable {
         }
         // Migrate the anchors used by the previous 2:1 and 7:9 compositions.
         // Other coordinates are user edits and remain untouched.
-        if [492, 444, 327].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 417 }
-        if [492, 444, 327].contains(decoded.activeSession.y) { decoded.activeSession.y = 417 }
+        if [492, 444, 327, 417].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 420 }
+        if [492, 444, 327, 417].contains(decoded.activeSession.y) { decoded.activeSession.y = 420 }
         return decoded
     }
 
