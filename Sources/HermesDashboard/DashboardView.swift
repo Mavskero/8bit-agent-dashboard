@@ -24,11 +24,11 @@ final class DashboardView: NSView {
     }()
 
     private let designSize = CGSize(width: 1280, height: 720)
-    // The canvas is split into a 3:2 upper/lower composition: 432pt above
-    // the divider and 288pt below it, including the small frame margins.
-    private let areaSplitY: CGFloat = 432
-    private let runtimeModuleHeight: CGFloat = 400
-    private let bottomModuleHeight: CGFloat = 248
+    // The canvas is split into a 7:9 upper/lower composition: 315pt above
+    // the divider and 405pt below it, including the small frame margins.
+    private let areaSplitY: CGFloat = 315
+    private let runtimeModuleHeight: CGFloat = 288
+    private let bottomModuleHeight: CGFloat = 385
     private let clockFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -207,7 +207,7 @@ final class DashboardView: NSView {
         ]
 
         for (index, row) in rows.enumerated() {
-            let rowY = origin.y + 66 + CGFloat(index) * 58
+            let rowY = origin.y + 52 + CGFloat(index) * 35
             PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + 28, y: rowY + 5), kind: row.3, color: row.2, context: context)
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
@@ -278,35 +278,53 @@ final class DashboardView: NSView {
         drawText(model.runtime.elapsed, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 460, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
         activeMetaStyle.colorHex = PixelPalette.green.hexString
         drawText("RUNNING", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 526, y: sessionOrigin.y + 18), context: context, style: activeMetaStyle)
-        drawText(model.runtime.activeSession, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 46), context: context)
+        let activeNameStyle = model.styles.style(for: .activeSessionName)
+        let activeName = fittedText(model.runtime.activeSession, style: activeNameStyle, maxWidth: 500)
+        drawText(activeName, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 24, y: sessionOrigin.y + 46), context: context)
         PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 79, width: 504, height: 23), value: model.runtime.contextPercent, color: PixelPalette.cyan, context: context)
         activeMetaStyle.colorHex = PixelPalette.cyan.hexString
         drawText("CTX \(model.runtime.contextPercent)%", key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 542, y: sessionOrigin.y + 81), context: context, style: activeMetaStyle)
 
-        let recent = model.runtime.sessions.count == 4 ? model.runtime.sessions : RuntimeStatus.demo(source: model.runtime.source).sessions
+        let recent = model.runtime.sessions
         let positions = [
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 132, width: 292, height: 40), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 132, width: 292, height: 40),
-            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 184, width: 292, height: 40), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 184, width: 292, height: 40)
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 122, width: 292, height: 62), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 122, width: 292, height: 62),
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 194, width: 292, height: 62), CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 194, width: 292, height: 62),
+            CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 266, width: 292, height: 62)
         ]
-        for (index, card) in recent.prefix(4).enumerated() {
+        for (index, card) in recent.prefix(5).enumerated() {
             drawSessionCard(card, rect: positions[index], context: context)
         }
     }
 
     private func drawSessionCard(_ session: SessionInfo, rect: CGRect, context: CGContext) {
         PixelPainter.drawFrame(rect, color: PixelPalette.border, context: context, fill: PixelPalette.navy)
-        drawText(session.title, key: .recentSession, at: CGPoint(x: rect.minX + 12, y: rect.minY + 8), context: context)
-        if !session.updatedAt.isEmpty {
+        let titleStyle = model.styles.style(for: .recentSession)
+        let title = fittedText(session.title, style: titleStyle, maxWidth: rect.width - 112)
+        drawText(title, key: .recentSession, at: CGPoint(x: rect.minX + 12, y: rect.minY + 8), context: context)
+        if !session.status.isEmpty || !session.updatedAt.isEmpty {
             var metaStyle = model.styles.style(for: .recentSession)
             metaStyle.pointSize *= 0.85
             metaStyle.colorHex = PixelPalette.cyanDim.hexString
-            drawText(session.updatedAt, key: .recentSession, at: CGPoint(x: rect.maxX - 72, y: rect.minY + 8), context: context, style: metaStyle)
+            let meta = session.status.isEmpty ? session.updatedAt : session.status
+            let metaWidth = PixelPainter.textWidth(meta, style: metaStyle)
+            drawText(meta, key: .recentSession, at: CGPoint(x: rect.maxX - 12 - metaWidth, y: rect.minY + 8), context: context, style: metaStyle)
         }
-        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 25, width: rect.width - 106, height: 9), value: session.progress, color: session.progress == 100 ? PixelPalette.green : PixelPalette.cyan, context: context)
+        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 30, width: rect.width - 106, height: 9), value: session.progress, color: session.progress == 100 ? PixelPalette.green : PixelPalette.cyan, context: context)
         var progressStyle = model.styles.style(for: .recentSession)
         progressStyle.pointSize *= 0.85
         progressStyle.colorHex = (session.progress == 100 ? PixelPalette.green : PixelPalette.cyan).hexString
-        drawText("\(session.progress)%", key: .recentSession, at: CGPoint(x: rect.maxX - 82, y: rect.minY + 25), context: context, style: progressStyle)
+        drawText("\(session.progress)%", key: .recentSession, at: CGPoint(x: rect.maxX - 82, y: rect.minY + 30), context: context, style: progressStyle)
+    }
+
+    private func fittedText(_ text: String, style: TextStyle, maxWidth: CGFloat) -> String {
+        guard PixelPainter.textWidth(text, style: style) > maxWidth else { return text }
+        var result = ""
+        for character in text {
+            let candidate = result + String(character) + "..."
+            if PixelPainter.textWidth(candidate, style: style) > maxWidth { break }
+            result.append(character)
+        }
+        return result.isEmpty ? "..." : result + "..."
     }
 
     private func drawText(_ text: String, key: DashboardStyleKey, at point: CGPoint, context: CGContext) {

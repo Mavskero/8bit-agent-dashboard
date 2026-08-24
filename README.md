@@ -1,6 +1,6 @@
 # Hermes Dashboard
 
-这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放；画布上下区域按 3:2 比例分割。
+这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放；画布上下区域按 7:9 比例分割。
 
 ## 最终目标设计图
 
@@ -56,6 +56,8 @@ hermes-done.png         hermes-error.png
 也支持环境变量 `CODEX_DASHBOARD_STATUS_PATH` 和 `HERMES_DASHBOARD_STATUS_PATH` 指向自定义 JSON。示例见 [status.example.json](status.example.json)。
 
 `active session` 的进度优先使用 `contextUsedTokens / contextLimitTokens` 计算，正是当前上下文占比；没有 token 数时才使用 `contextPercent`。
+
+当 Runtime Status 来源选择 `Codex Desktop` 时，Active Session 会读取 `~/.codex/session_index.jsonl`，按更新时间排序并展示最近 5 个 Codex 任务；任务标题和最近更新时间会实时刷新。
 
 ## 系统数据源
 

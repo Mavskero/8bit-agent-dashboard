@@ -219,8 +219,8 @@ struct DashboardLayout: Codable, Equatable {
     static let defaults = DashboardLayout(
         padding: 8,
         runtimeStatus: DashboardModulePosition(x: 770, y: 26),
-        hermesAgent: DashboardModulePosition(x: 16, y: 444),
-        activeSession: DashboardModulePosition(x: 618, y: 444),
+        hermesAgent: DashboardModulePosition(x: 16, y: 327),
+        activeSession: DashboardModulePosition(x: 618, y: 327),
         runtimeOpacity: 0.92,
         agentOpacity: 0.92,
         activeSessionOpacity: 0.92
@@ -231,10 +231,10 @@ struct DashboardLayout: Codable, Equatable {
               var decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data) else {
             return .defaults
         }
-        // Keep existing users on the new 3:2 composition when they still have
-        // the original bottom-module anchors, while preserving custom edits.
-        if decoded.hermesAgent.y == 492 { decoded.hermesAgent.y = 444 }
-        if decoded.activeSession.y == 492 { decoded.activeSession.y = 444 }
+        // Keep existing users on the new 7:9 composition when they still have
+        // the previous default anchors, while preserving custom edits.
+        if decoded.hermesAgent.y == 492 || decoded.hermesAgent.y == 444 { decoded.hermesAgent.y = 327 }
+        if decoded.activeSession.y == 492 || decoded.activeSession.y == 444 { decoded.activeSession.y = 327 }
         return decoded
     }
 
@@ -385,7 +385,8 @@ struct RuntimeStatus {
                 SessionInfo(title: "Build dashboard shell", progress: 100, status: "DONE", updatedAt: "18:32"),
                 SessionInfo(title: "Tune pixel avatar", progress: 82, status: "", updatedAt: "17:05"),
                 SessionInfo(title: "API health check", progress: 46, status: "", updatedAt: "15:47"),
-                SessionInfo(title: "Write release notes", progress: 24, status: "", updatedAt: "13:22")
+                SessionInfo(title: "Write release notes", progress: 24, status: "", updatedAt: "13:22"),
+                SessionInfo(title: "Review telemetry output", progress: 0, status: "", updatedAt: "12:10")
             ],
             isLive: false
         )

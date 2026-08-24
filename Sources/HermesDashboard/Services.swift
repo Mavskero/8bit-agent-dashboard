@@ -237,6 +237,18 @@ private struct RuntimeSessionPayload: Decodable {
     var updatedAt: String?
 }
 
+private struct CodexTaskIndexEntry: Decodable {
+    var id: String?
+    var threadName: String?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case threadName = "thread_name"
+        case updatedAt = "updated_at"
+    }
+}
+
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
 
@@ -248,9 +260,17 @@ final class RuntimeStatusService {
     }
 
     private func read(source: RuntimeSource) -> RuntimeStatus? {
+        let codexTasks = source == .codex ? readCodexTasks() : []
         for url in candidateURLs(for: source) {
             guard let data = try? Data(contentsOf: url), let payload = try? JSONDecoder().decode(RuntimePayload.self, from: data) else { continue }
-            return map(payload, source: source)
+            return map(payload, source: source, codexTasks: codexTasks)
+        }
+        if source == .codex, !codexTasks.isEmpty {
+            var status = RuntimeStatus.demo(source: source)
+            status.activeSession = codexTasks[0].title
+            status.sessions = codexTasks
+            status.isLive = true
+            return status
         }
         return nil
     }
@@ -274,7 +294,50 @@ final class RuntimeStatusService {
         return paths
     }
 
-    private func map(_ payload: RuntimePayload, source: RuntimeSource) -> RuntimeStatus {
+    private func readCodexTasks() -> [SessionInfo] {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/session_index.jsonl")
+        guard let data = try? Data(contentsOf: url), data.count < 20_000_000,
+              let text = String(data: data, encoding: .utf8) else { return [] }
+
+        let decoder = JSONDecoder()
+        let entries = text.split(whereSeparator: \.isNewline).compactMap { line -> CodexTaskIndexEntry? in
+            guard let lineData = line.data(using: .utf8) else { return nil }
+            return try? decoder.decode(CodexTaskIndexEntry.self, from: lineData)
+        }
+        var seen = Set<String>()
+        let sorted = entries.sorted { lhs, rhs in
+            (lhs.updatedAt ?? "") > (rhs.updatedAt ?? "")
+        }
+        return sorted.compactMap { entry in
+            let title = entry.threadName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !title.isEmpty else { return nil }
+            let identity = entry.id ?? title
+            guard seen.insert(identity).inserted else { return nil }
+            return SessionInfo(
+                title: title,
+                progress: 0,
+                status: "",
+                updatedAt: formatTaskDate(entry.updatedAt)
+            )
+        }.prefix(5).map { $0 }
+    }
+
+    private func formatTaskDate(_ value: String?) -> String {
+        guard let value else { return "" }
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let standardFormatter = ISO8601DateFormatter()
+        guard let date = fractionalFormatter.date(from: value) ?? standardFormatter.date(from: value) else {
+            return ""
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func map(_ payload: RuntimePayload, source: RuntimeSource, codexTasks: [SessionInfo]) -> RuntimeStatus {
         let demo = RuntimeStatus.demo(source: source)
         let calculatedContext: Int
         if let used = payload.contextUsedTokens, let limit = payload.contextLimitTokens, limit > 0 {
@@ -282,7 +345,7 @@ final class RuntimeStatusService {
         } else {
             calculatedContext = Int((payload.contextPercent ?? Double(demo.contextPercent)).rounded())
         }
-        let sessionValues = payload.sessions?.compactMap { item -> SessionInfo? in
+        let payloadSessions = payload.sessions?.compactMap { item -> SessionInfo? in
             guard let title = item.title, !title.isEmpty else { return nil }
             return SessionInfo(
                 title: title,
@@ -291,6 +354,8 @@ final class RuntimeStatusService {
                 updatedAt: item.updatedAt ?? ""
             )
         } ?? demo.sessions
+        let sessionValues = codexTasks.isEmpty ? payloadSessions : codexTasks
+        let currentSession = codexTasks.first?.title ?? payload.activeSession ?? demo.activeSession
 
         return RuntimeStatus(
             source: source,
@@ -300,11 +365,11 @@ final class RuntimeStatusService {
             provider: (payload.provider ?? demo.provider).uppercased(),
             balance: payload.balance ?? demo.balance,
             tokenPercent: clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
-            activeSession: payload.activeSession ?? demo.activeSession,
+            activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
             agentState: AgentState(rawValue: payload.agentState ?? demo.agentState.rawValue),
-            sessions: Array(sessionValues.prefix(4)),
+            sessions: Array(sessionValues.prefix(5)),
             isLive: true
         )
     }
