@@ -2,14 +2,49 @@ import AppKit
 import Foundation
 import ImageIO
 
+enum DashboardDisplayPreference {
+    private static let displayIDKey = "preferredDisplayID"
+
+    static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        return (screen.deviceDescription[key] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
+    }
+
+    static var savedDisplayID: CGDirectDisplayID? {
+        guard let value = UserDefaults.standard.object(forKey: displayIDKey) as? NSNumber else { return nil }
+        return CGDirectDisplayID(value.uint32Value)
+    }
+
+    static func preferredScreen() -> NSScreen {
+        if let savedDisplayID,
+           let screen = NSScreen.screens.first(where: { displayID(for: $0) == savedDisplayID }) {
+            return screen
+        }
+        return NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    static func save(screen: NSScreen) {
+        guard let id = displayID(for: screen) else { return }
+        UserDefaults.standard.set(NSNumber(value: id), forKey: displayIDKey)
+    }
+
+    static func label(for screen: NSScreen, index: Int) -> String {
+        let width = Int(screen.frame.width.rounded())
+        let height = Int(screen.frame.height.rounded())
+        return "\(index + 1). \(screen.localizedName) (\(width)x\(height))"
+    }
+}
+
 struct TextStyle: Codable, Equatable {
     static let builtInPixelFont = "__PIXEL_GRID__"
+    static let silkscreenRegular = "Silkscreen-Regular"
+    static let silkscreenBold = "Silkscreen-Bold"
     var fontName: String
     var pointSize: CGFloat
     var colorHex: String
 
     static var defaultFontName: String {
-        builtInPixelFont
+        silkscreenRegular
     }
 
     var color: NSColor { NSColor(hex: colorHex) ?? PixelPalette.cream }
@@ -23,7 +58,8 @@ enum DashboardStyleKey: String, CaseIterable {
     case title
     case runtime
     case agent
-    case activeSession
+    case activeSessionTitle
+    case activeSessionName
     case recentSession
 
     var displayName: String {
@@ -35,7 +71,8 @@ enum DashboardStyleKey: String, CaseIterable {
         case .title: return "Now Playing · Title"
         case .runtime: return "Runtime Status"
         case .agent: return "Hermes Agent"
-        case .activeSession: return "Active Session"
+        case .activeSessionTitle: return "Active Session · Header"
+        case .activeSessionName: return "Active Session · Name"
         case .recentSession: return "Recent Sessions"
         }
     }
@@ -47,14 +84,15 @@ struct DashboardStyles: Codable, Equatable {
     static var defaults: DashboardStyles {
         let font = TextStyle.defaultFontName
         return DashboardStyles(values: [
-            DashboardStyleKey.clock.rawValue: TextStyle(fontName: font, pointSize: 112, colorHex: "F2E4C9"),
+            DashboardStyleKey.clock.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 112, colorHex: "F2E4C9"),
             DashboardStyleKey.date.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "F2E4C9"),
             DashboardStyleKey.temperature.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "43E0DC"),
             DashboardStyleKey.artist.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC"),
-            DashboardStyleKey.title.rawValue: TextStyle(fontName: font, pointSize: 49, colorHex: "F2E4C9"),
+            DashboardStyleKey.title.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 49, colorHex: "F2E4C9"),
             DashboardStyleKey.runtime.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
             DashboardStyleKey.agent.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC"),
-            DashboardStyleKey.activeSession.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
+            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9"),
             DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: font, pointSize: 14, colorHex: "F2E4C9")
         ])
     }
@@ -73,10 +111,28 @@ struct DashboardStyles: Codable, Equatable {
             return .defaults
         }
         var merged = DashboardStyles.defaults
+        let shouldMigrateLegacyPixelStyles = !UserDefaults.standard.bool(forKey: "didMigrateLegacyPixelStyles")
         for key in DashboardStyleKey.allCases {
             if let saved = decoded.values[key.rawValue] {
-                merged.values[key.rawValue] = saved
+                if shouldMigrateLegacyPixelStyles && saved.fontName == TextStyle.builtInPixelFont {
+                    var migrated = saved
+                    migrated.fontName = (key == .clock || key == .title) ? TextStyle.silkscreenBold : TextStyle.silkscreenRegular
+                    merged.values[key.rawValue] = migrated
+                } else {
+                    merged.values[key.rawValue] = saved
+                }
             }
+        }
+        if let legacyActiveSession = decoded.values["activeSession"] {
+            if decoded.values[DashboardStyleKey.activeSessionTitle.rawValue] == nil {
+                merged.values[DashboardStyleKey.activeSessionTitle.rawValue] = legacyActiveSession
+            }
+            if decoded.values[DashboardStyleKey.activeSessionName.rawValue] == nil {
+                merged.values[DashboardStyleKey.activeSessionName.rawValue] = legacyActiveSession
+            }
+        }
+        if shouldMigrateLegacyPixelStyles {
+            UserDefaults.standard.set(true, forKey: "didMigrateLegacyPixelStyles")
         }
         return merged
     }
@@ -84,6 +140,44 @@ struct DashboardStyles: Codable, Equatable {
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
         UserDefaults.standard.set(data, forKey: "dashboardStyles")
+    }
+}
+
+struct DashboardModulePosition: Codable, Equatable {
+    var x: CGFloat
+    var y: CGFloat
+}
+
+struct DashboardLayout: Codable, Equatable {
+    var padding: CGFloat
+    var runtimeStatus: DashboardModulePosition
+    var hermesAgent: DashboardModulePosition
+    var activeSession: DashboardModulePosition
+    var runtimeOpacity: CGFloat
+    var agentOpacity: CGFloat
+    var activeSessionOpacity: CGFloat
+
+    static let defaults = DashboardLayout(
+        padding: 8,
+        runtimeStatus: DashboardModulePosition(x: 770, y: 26),
+        hermesAgent: DashboardModulePosition(x: 16, y: 492),
+        activeSession: DashboardModulePosition(x: 618, y: 492),
+        runtimeOpacity: 0.92,
+        agentOpacity: 0.92,
+        activeSessionOpacity: 0.92
+    )
+
+    static func load() -> DashboardLayout {
+        guard let data = UserDefaults.standard.data(forKey: "dashboardLayout"),
+              let decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data) else {
+            return .defaults
+        }
+        return decoded
+    }
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: "dashboardLayout")
     }
 }
 
@@ -242,6 +336,7 @@ final class DashboardModel: NSObject {
     private(set) var wallpaperPath: String?
     private(set) var assetFolderPath: String?
     private(set) var styles: DashboardStyles
+    private(set) var layout: DashboardLayout
     private(set) var assetStore: DashboardAssetStore
     var onChange: (() -> Void)?
 
@@ -271,6 +366,7 @@ final class DashboardModel: NSObject {
         wallpaperPath = UserDefaults.standard.string(forKey: Keys.wallpaperPath)
         assetFolderPath = UserDefaults.standard.string(forKey: Keys.assetFolderPath)
         styles = DashboardStyles.load()
+        layout = DashboardLayout.load()
         assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)))
         super.init()
     }
@@ -317,6 +413,12 @@ final class DashboardModel: NSObject {
     func resetStyles() {
         styles = .defaults
         styles.save()
+        notifyChange()
+    }
+
+    func updateLayout(_ newLayout: DashboardLayout) {
+        layout = newLayout
+        layout.save()
         notifyChange()
     }
 

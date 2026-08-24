@@ -16,6 +16,9 @@ SWIFT_MODULECACHE_PATH="$MODULE_CACHE" swiftc -O -module-cache-path "$MODULE_CAC
 
 cp "$PROJECT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$PROJECT_DIR/PkgInfo" "$APP_DIR/Contents/PkgInfo"
+if [[ -d "$PROJECT_DIR/Resources" ]]; then
+  ditto "$PROJECT_DIR/Resources" "$APP_DIR/Contents/Resources"
+fi
 
 codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
 echo "Built $APP_DIR"

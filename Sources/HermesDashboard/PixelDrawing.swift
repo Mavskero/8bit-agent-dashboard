@@ -182,7 +182,8 @@ struct PixelPainter {
             "111111111111100", "011111111111000", "011111111111000", "001111111110000",
             "000111111100000", "000001111000000", "000000000000000"
         ]
-        cream.setFill()
+        let moonGold = NSColor(calibratedRed: 0.84, green: 0.62, blue: 0.30, alpha: 1)
+        moonGold.setFill()
         for (row, line) in moon.enumerated() {
             for (column, bit) in line.enumerated() where bit == "1" {
                 context.fill(CGRect(x: point.x + CGFloat(column) * scale, y: point.y + CGFloat(row) * scale, width: scale, height: scale))
@@ -193,6 +194,19 @@ struct PixelPainter {
             for (column, bit) in line.enumerated() where bit == "1" && column > 7 {
                 context.fill(CGRect(x: point.x + CGFloat(column) * scale, y: point.y + CGFloat(row) * scale, width: scale, height: scale))
             }
+        }
+
+        // A few square craters and a low cloud give the weather marker the same
+        // illustrated, layered silhouette as the reference dashboard.
+        let crater = NSColor(calibratedRed: 0.64, green: 0.42, blue: 0.18, alpha: 1)
+        for (x, y, width, height) in [(5, 4, 2, 2), (8, 8, 2, 2), (5, 11, 1, 1)] {
+            crater.setFill()
+            context.fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: CGFloat(width) * scale, height: CGFloat(height) * scale))
+        }
+
+        PixelPalette.borderBright.setFill()
+        for (x, y, width) in [(0, 16, 5), (3, 14, 6), (8, 16, 6), (13, 15, 4)] {
+            context.fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: CGFloat(width) * scale, height: 2 * scale))
         }
 
         // Keep the weather marker within the same vertical row as the time.
@@ -316,12 +330,10 @@ struct PixelPainter {
         for star in stars { context.fill(CGRect(x: star.0, y: star.1, width: star.2, height: star.2)) }
 
         let buildings: [(CGFloat, CGFloat, CGFloat, CGFloat, NSColor)] = [
-            (20, 392, 68, 68, border), (76, 358, 38, 102, borderBright), (122, 406, 76, 54, border),
-            (210, 382, 68, 78, border), (286, 420, 54, 40, borderBright), (350, 360, 70, 100, border),
-            (432, 400, 54, 60, borderBright), (496, 374, 72, 86, border), (592, 416, 56, 44, border),
-            (666, 340, 78, 120, borderBright), (760, 384, 62, 76, border), (836, 352, 54, 108, borderBright),
-            (906, 398, 76, 62, border), (1000, 364, 62, 96, borderBright), (1080, 400, 76, 60, border),
-            (1172, 348, 76, 112, borderBright)
+            (330, 408, 48, 52, border), (370, 378, 36, 82, borderBright), (406, 420, 58, 40, border),
+            (468, 388, 48, 72, border), (520, 414, 36, 46, borderBright), (562, 364, 52, 96, border),
+            (620, 402, 42, 58, borderBright), (674, 346, 58, 114, border), (740, 386, 46, 74, borderBright),
+            (794, 410, 36, 50, border)
         ]
         for building in buildings {
             building.4.setFill()

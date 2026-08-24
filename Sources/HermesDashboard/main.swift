@@ -1,6 +1,6 @@
 import AppKit
 
-let application = NSApplication.shared
+let application = DashboardApplication.shared
 let delegate = DashboardAppDelegate()
 application.delegate = delegate
 application.run()
