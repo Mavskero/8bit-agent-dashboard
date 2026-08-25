@@ -42,6 +42,7 @@ struct TextStyle: Codable, Equatable {
     var fontName: String
     var pointSize: CGFloat
     var colorHex: String
+    var smoothRendering: Bool
     /// The base position for this text group in design-canvas coordinates.
     /// Panel-contained styles use coordinates relative to their panel origin.
     var x: CGFloat
@@ -51,14 +52,16 @@ struct TextStyle: Codable, Equatable {
         case fontName
         case pointSize
         case colorHex
+        case smoothRendering
         case x
         case y
     }
 
-    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0) {
+    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0, smoothRendering: Bool = true) {
         self.fontName = fontName
         self.pointSize = pointSize
         self.colorHex = colorHex
+        self.smoothRendering = smoothRendering
         self.x = x
         self.y = y
     }
@@ -68,6 +71,7 @@ struct TextStyle: Codable, Equatable {
         fontName = try container.decode(String.self, forKey: .fontName)
         pointSize = try container.decode(CGFloat.self, forKey: .pointSize)
         colorHex = try container.decode(String.self, forKey: .colorHex)
+        smoothRendering = try container.decodeIfPresent(Bool.self, forKey: .smoothRendering) ?? true
         x = try container.decodeIfPresent(CGFloat.self, forKey: .x) ?? 0
         y = try container.decodeIfPresent(CGFloat.self, forKey: .y) ?? 0
     }
@@ -410,6 +414,14 @@ struct ProviderSettings: Codable, Equatable {
     static func load() -> ProviderSettings {
         guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
               var value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
+        if !value.lastBalance.isEmpty && !value.lastBalance.contains("$") {
+            if let numeric = Double(value.lastBalance.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                value.lastBalance = String(format: "$%.2f", numeric)
+            } else {
+                value.lastBalance = "$\(value.lastBalance)"
+            }
+            value.save()
+        }
         // TeamRouter exposes this endpoint on both hosts, but the confirmed
         // Bearer-authenticated balance endpoint uses the root host.
         if value.baseURL == "https://api.teamorouter.com" {
@@ -549,7 +561,8 @@ struct RuntimeStatus {
 
     func preservingTransientData(from previous: RuntimeStatus) -> RuntimeStatus {
         var merged = self
-        if !hasModelData || model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !hasModelData || normalizedModel.isEmpty || normalizedModel == "custom" {
             merged.model = previous.model
         }
         if !hasContextData {

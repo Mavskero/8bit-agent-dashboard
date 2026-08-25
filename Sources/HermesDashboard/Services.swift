@@ -687,7 +687,14 @@ final class ProviderBalanceService {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             let numeric = numericValue(in: trimmed)
             guard !trimmed.isEmpty else { return nil }
-            let display = Double(trimmed).map(format) ?? trimmed
+            let display: String
+            if trimmed.contains("$") {
+                display = trimmed
+            } else if let numeric {
+                display = format(numeric)
+            } else {
+                display = "$\(trimmed)"
+            }
             return BalanceSnapshot(display: display, numeric: numeric)
         }
         return nil
@@ -702,8 +709,7 @@ final class ProviderBalanceService {
     }
 
     private func format(_ value: Double) -> String {
-        if value.rounded() == value { return String(format: "%.0f", value) }
-        return String(format: "%.2f", value)
+        String(format: "$%.2f", value)
     }
 }
 

@@ -48,9 +48,9 @@ killall HermesDashboard 2>/dev/null || true
 - Session 卡片显示标题、状态灯、上下文分段方块和右端百分比；最新 session 使用更高饱和度背景，明显区别于四个历史 session。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
 - 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
-- 设置窗口使用浅色高对比外观；每个颜色支持取色板和 R/G/B 数值编辑，双击色块会在 `DEFAULT DISPLAY` 指定的屏幕打开取色板。
+- 设置窗口使用浅色高对比外观；每个颜色支持取色板和 R/G/B 数值编辑，双击色块会在 `DEFAULT DISPLAY` 指定的屏幕打开取色板。每个文字样式还有独立的 `Smooth` 平滑渲染开关。
 - Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
-- Provider Settings 支持 provider 名称、余额 base URL / path / JSON 字段路径、刷新间隔和上次余额持久化；余额请求读取 `OPENAI_API_KEY`，启动立即请求，失败保持旧值。
+- Provider Settings 支持 provider 名称、余额 base URL / path / JSON 字段路径、刷新间隔和上次余额持久化；余额请求读取 `OPENAI_API_KEY`，启动立即请求，余额以美元显示，失败保持旧值。
 - Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、provider 和余额；余额按 >=10、5-10、<5 显示绿/黄/红，thinking 按强度显示不同颜色。
 - Runtime Icons 设置支持六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y；可单独设置 Runtime 标题与内容间距以及 icon 与行标题的间距。
 - `WEATHER CITY` 设置使用 `wttr.in` 获取指定城市天气，留空时使用 macOS Weather 缓存/降级值。
@@ -157,3 +157,4 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - Weather.app 和 Apple Music 的读取可能需要 macOS 隐私权限；权限不足时程序应继续使用降级数据，不要把权限错误当作启动失败。
 - 全屏 screen-saver 层级窗口会影响文件选择器，所以设置中的文件面板通过临时降低父窗口层级来打开；修改窗口层级时需要复测 Choose GIF / Choose Folder。
 - Finder 启动不会继承终端 shell 的 `OPENAI_API_KEY`。Provider 设置会显示当前 App 进程是否检测到变量；若显示 missing，需要先通过 launchd 提供该变量并完全退出后重开 App，密钥不能写入源码、偏好或日志。
+- Codex 闲置时若状态源暂时返回空模型或 `custom`，Runtime Status 会保留上一轮真实模型名。
