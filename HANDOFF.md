@@ -9,8 +9,8 @@
 - 本地项目：`/Users/yukarii/Documents/Codex/2026-08-24/github-plugin-github-openai-curated-remote/work/8bit-agent-dashboard`
 - GitHub：`https://github.com/Mavskero/8bit-agent-dashboard.git`
 - 分支：`main`
-- 本次源码基线提交：`d3cfe39 Tighten dashboard frame alignment`
-- 本文件会作为后续提交与上述源码基线一起推送到 `origin/main`
+- 本次源码基线提交：以 `main` 最新提交为准
+- 当前用户的视觉设置已固化到 `DashboardStyles.defaults` / `DashboardLayout.defaults`，并随本项目资源一起推送到 `origin/main`
 
 ## 构建、启动与打包
 
@@ -48,6 +48,20 @@ killall HermesDashboard 2>/dev/null || true
 - Session 卡片只显示标题、状态灯和上下文分段方块进度条：绿色 DONE、红色 ERROR、蓝色闪烁 RUNNING。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
 - 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
+
+## 当前项目默认设置
+
+新安装且没有本机偏好时，App 默认使用当前用户确认过的设置：
+
+```text
+padding = 12
+runtimeStatus = (770, 26), opacity = 0.2
+hermesAgent = (16, 420), opacity = 0.2
+activeSession = (618, 420), opacity = 0.2
+sessionCardOpacity = 0.0
+```
+
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 
@@ -113,6 +127,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `preferredDisplayID`：默认显示器。
 - `runtimeSource`：Codex 或 Hermes。
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。
+- `wallpaperCleared`：用户明确清除 Bundle 默认壁纸后的标记。
 
 `DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417 底部 y 值会迁移到 420；自定义的其他坐标保持不变。
 

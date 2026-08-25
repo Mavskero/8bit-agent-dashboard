@@ -128,18 +128,17 @@ struct DashboardStyles: Codable, Equatable {
     private var values: [String: TextStyle]
 
     static var defaults: DashboardStyles {
-        let font = TextStyle.defaultFontName
         return DashboardStyles(values: [
-            DashboardStyleKey.clock.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 112, colorHex: "F2E4C9", x: 42, y: 48),
-            DashboardStyleKey.date.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "F2E4C9", x: 42, y: 186),
-            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: font, pointSize: 35, colorHex: "43E0DC", x: 66, y: 186),
-            DashboardStyleKey.artist.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC", x: 42, y: 252),
-            DashboardStyleKey.title.rawValue: TextStyle(fontName: TextStyle.silkscreenBold, pointSize: 49, colorHex: "F2E4C9", x: 42, y: 287),
-            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 30, y: 22),
-            DashboardStyleKey.agent.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "43E0DC", x: 18, y: 18),
-            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 24, y: 16),
-            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: font, pointSize: 28, colorHex: "F2E4C9", x: 24, y: 46),
-            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: font, pointSize: 14, colorHex: "F2E4C9", x: 12, y: 8)
+            DashboardStyleKey.clock.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 166, colorHex: "FBF5ED", x: 50, y: 18),
+            DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 35, colorHex: "F7EDDB", x: 42, y: 186),
+            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Yuppy TC", pointSize: 35, colorHex: "4CE4E3", x: 325, y: 200),
+            DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "57E8E9", x: 42, y: 252),
+            DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F7EDDB", x: 42, y: 287),
+            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 30, colorHex: "F5E9D3", x: 30, y: 22),
+            DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "4CE4E3", x: 18, y: 18),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 32, colorHex: "F7EDDB", x: 24, y: 10),
+            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "Times New Roman", pointSize: 21, colorHex: "F9F0E2", x: 24, y: 44),
+            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 18, colorHex: "F5E9D3", x: 12, y: 8)
         ])
     }
 
@@ -255,14 +254,14 @@ struct DashboardLayout: Codable, Equatable {
     }
 
     static let defaults = DashboardLayout(
-        padding: 8,
+        padding: 12,
         runtimeStatus: DashboardModulePosition(x: 770, y: 26),
         hermesAgent: DashboardModulePosition(x: 16, y: 420),
         activeSession: DashboardModulePosition(x: 618, y: 420),
-        runtimeOpacity: 0.92,
-        agentOpacity: 0.92,
-        activeSessionOpacity: 0.92,
-        sessionCardOpacity: 0.82
+        runtimeOpacity: 0.2,
+        agentOpacity: 0.2,
+        activeSessionOpacity: 0.2,
+        sessionCardOpacity: 0.0
     )
 
     static func load() -> DashboardLayout {
@@ -454,7 +453,12 @@ final class DashboardModel: NSObject {
     private enum Keys {
         static let runtimeSource = "runtimeSource"
         static let wallpaperPath = "wallpaperPath"
+        static let wallpaperCleared = "wallpaperCleared"
         static let assetFolderPath = "assetFolderPath"
+    }
+
+    private static var bundledWallpaperPath: String? {
+        Bundle.main.url(forResource: "kirby_s_chill_land", withExtension: "gif")?.path
     }
 
     private let weatherService = SystemWeatherService()
@@ -467,7 +471,13 @@ final class DashboardModel: NSObject {
             .flatMap(RuntimeSource.init(rawValue:)) ?? .codex
         runtimeSource = storedSource
         runtime = RuntimeStatus.demo(source: storedSource)
-        wallpaperPath = UserDefaults.standard.string(forKey: Keys.wallpaperPath)
+        if let storedWallpaperPath = UserDefaults.standard.string(forKey: Keys.wallpaperPath) {
+            wallpaperPath = storedWallpaperPath
+        } else if UserDefaults.standard.bool(forKey: Keys.wallpaperCleared) {
+            wallpaperPath = nil
+        } else {
+            wallpaperPath = Self.bundledWallpaperPath
+        }
         assetFolderPath = UserDefaults.standard.string(forKey: Keys.assetFolderPath)
         styles = DashboardStyles.load()
         layout = DashboardLayout.load()
@@ -491,8 +501,10 @@ final class DashboardModel: NSObject {
         wallpaperPath = url?.path
         if let path = wallpaperPath {
             UserDefaults.standard.set(path, forKey: Keys.wallpaperPath)
+            UserDefaults.standard.removeObject(forKey: Keys.wallpaperCleared)
         } else {
             UserDefaults.standard.removeObject(forKey: Keys.wallpaperPath)
+            UserDefaults.standard.set(true, forKey: Keys.wallpaperCleared)
         }
         notifyChange()
     }
