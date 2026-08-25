@@ -60,13 +60,14 @@ killall HermesDashboard 2>/dev/null || true
 
 ```text
 padding = 12
-runtimeStatus = (770, 26), opacity = 0.2
-hermesAgent = (16, 420), opacity = 0.2
-activeSession = (618, 420), opacity = 0.2
+runtimeStatus = (770, 20), opacity = 0.2
+hermesAgent = (16, 416), opacity = 0.2
+activeSession = (618, 416), opacity = 0.2
 sessionCardOpacity = 0.0
+runtimeTitleSpacing = 48
 ```
 
-文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Active Session · Last Conversation` 控制当前 session 右侧最后对话时间。默认 Provider 为 TeamRouter，余额接口为 `https://api.teamorouter.com` + `/v1/billing/balance`，JSON 字段为 `balance.value`，刷新间隔为 600 秒。默认天气城市为 Fuzhou。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 
@@ -82,9 +83,9 @@ bottomModuleHeight     = 288
 默认模块位置在 `Sources/HermesDashboard/Models.swift`：
 
 ```text
-runtimeStatus = (770, 26)
-hermesAgent   = (16, 420)
-activeSession = (618, 420)
+runtimeStatus = (770, 20)
+hermesAgent   = (16, 416)
+activeSession = (618, 416)
 ```
 
 底部模块尺寸：Hermes Agent 为 584x288，Active Session 为 636x288。Active Session 内部当前布局：
@@ -97,9 +98,9 @@ activeSession = (618, 420)
                  (x + 328, y + 202, width 292, height 76)
 ```
 
-Active Session 外框使用普通 `borderBright`，最新 session 内框使用高亮 `cyan`。底部模块默认 y=420 是为避免 288px 高度超出外部 720px 画布而设置的；如果继续调整高度，必须同步检查 `y + height <= 712`。
+Active Session 外框使用普通 `borderBright`，最新 session 内框使用高亮 `cyan`。底部模块默认 y=416 是为避免 288px 高度超出外部 720px 画布而设置的；如果继续调整高度，必须同步检查 `y + height <= 712`。
 
-Runtime Status 行首从模块原点的 `y + 62` 开始，每行间距 35px。行尾彩灯已删除。齿轮按钮在视图坐标中使用 42x42 的点击区域。
+Runtime Status 行首从模块原点的标题下方开始，每行间距 35px；标题与内容默认间距为 48。行尾彩灯和右上角 CODEX/HERMES 来源字样已删除。齿轮按钮使用 54x54 的点击区域。
 
 ## 代码结构
 
@@ -136,7 +137,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `providerSettings`：provider 名称、余额请求设置、刷新间隔和最后成功余额。
 - `weatherCity`：天气 API 城市；`DashboardLayout.runtimeTitleSpacing` / `runtimeIcons`：Runtime 标题间距和图标设置。
 
-`DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417 底部 y 值会迁移到 420；自定义的其他坐标保持不变。
+`DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417、420 底部 y 值会迁移到 416；自定义的其他坐标保持不变。
 
 ## 接管时建议先做的检查
 

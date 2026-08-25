@@ -299,14 +299,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func loadFont(_ sender: NSButton) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.font]
+        panel.allowedContentTypes = ["ttf", "otf", "ttc"].compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         beginFilePanel(panel) { [weak self] response in
             guard response == .OK, let self else { return }
-            for url in panel.urls { _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) }
-            let names = NSFontManager.shared.availableFontFamilies.sorted()
-            for row in self.styleRows.values { row.setFontNames(names) }
+            var names = Set(NSFontManager.shared.availableFontFamilies)
+            for url in panel.urls {
+                _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+                for descriptor in CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] ?? [] {
+                    if let family = CTFontDescriptorCopyAttribute(descriptor, kCTFontFamilyNameAttribute) as? String {
+                        names.insert(family)
+                    }
+                    if let postScriptName = CTFontDescriptorCopyAttribute(descriptor, kCTFontNameAttribute) as? String {
+                        names.insert(postScriptName)
+                    }
+                }
+            }
+            // FontManager's family cache can lag behind process registration;
+            // include descriptor names so the imported font is immediately selectable.
+            names.formUnion(NSFontManager.shared.availableFontFamilies)
+            for row in self.styleRows.values { row.setFontNames(names.sorted()) }
         }
     }
 
@@ -476,7 +489,10 @@ private final class ProviderSettingsWindowController: NSWindowController, NSWind
         addField("Balance path", key: "balancePath", value: model.providerSettings.balancePath, y: 192, to: content)
         addField("JSON field path", key: "balanceJSONPath", value: model.providerSettings.balanceJSONPath, y: 152, to: content)
         addField("Refresh interval (sec)", key: "refreshInterval", value: String(Int(model.providerSettings.refreshInterval)), y: 112, to: content)
-        let note = NSTextField(wrappingLabelWithString: "API key is read from OPENAI_API_KEY. A failed request keeps the previous balance. The first request runs when the dashboard starts.")
+        let environmentState = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?.isEmpty == false
+            ? "OPENAI_API_KEY detected in this process."
+            : "OPENAI_API_KEY is missing from this process; Finder-launched apps need the variable exported through launchd."
+        let note = NSTextField(wrappingLabelWithString: "\(environmentState) A failed request keeps the previous balance. The first request runs when the dashboard starts. Current saved balance: \(model.providerSettings.lastBalance)")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
         note.frame = NSRect(x: 28, y: 58, width: 560, height: 38)

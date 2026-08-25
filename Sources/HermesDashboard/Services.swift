@@ -314,6 +314,7 @@ private struct CodexSnapshot {
     var thinking: String?
     var fastMode: Bool?
     var provider: String?
+    var hasContextData: Bool
 }
 
 final class RuntimeStatusService {
@@ -346,6 +347,8 @@ final class RuntimeStatusService {
             if !provider.name.isEmpty { status.provider = provider.name.uppercased() }
             status.balance = provider.lastBalance
             status.balanceValue = provider.lastBalanceValue
+            status.hasModelData = codexSnapshot.model?.isEmpty == false
+            status.hasContextData = codexSnapshot.hasContextData
             status.isLive = true
             return status
         }
@@ -426,7 +429,8 @@ final class RuntimeStatusService {
                     model: metadata.model,
                     thinking: metadata.thinking,
                     fastMode: metadata.fastMode,
-                    provider: metadata.provider
+                    provider: metadata.provider,
+                    hasContextData: sessions.contains { $0.contextPercent > 0 }
                 )
             }
         }
@@ -434,15 +438,15 @@ final class RuntimeStatusService {
         let legacySessions = readLegacyCodexTasks()
         guard !legacySessions.isEmpty else { return nil }
         let metadata = readCodexRuntimeMetadata(state: nil)
-        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider)
+        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
     }
 
     private func readCodexRuntimeMetadata(state: [String: Any]?) -> (model: String?, thinking: String?, fastMode: Bool?, provider: String?) {
         let configURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
         let config = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        let configuredModel = state?["model"] as? String ?? valueAfterTOMLKey("model", in: config)
-        let configuredThinking = state?["reasoning_effort"] as? String ?? valueAfterTOMLKey("model_reasoning_effort", in: config)
-        let configuredProvider = state?["model_provider"] as? String ?? valueAfterTOMLKey("model_provider", in: config)
+        let configuredModel = state == nil ? valueAfterTOMLKey("model", in: config) : state?["model"] as? String
+        let configuredThinking = state == nil ? valueAfterTOMLKey("model_reasoning_effort", in: config) : state?["reasoning_effort"] as? String
+        let configuredProvider = state == nil ? valueAfterTOMLKey("model_provider", in: config) : state?["model_provider"] as? String
         let rolloutFast = (state?["rollout_path"] as? String).flatMap(readFastFlagFromRollout)
         let fast = (state?["fast_mode"] as? NSNumber)?.boolValue
             ?? (state?["fast"] as? NSNumber)?.boolValue
@@ -606,7 +610,9 @@ final class RuntimeStatusService {
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
             agentState: agentState,
             sessions: Array(sessionValues.prefix(5)),
-            isLive: true
+            isLive: true,
+            hasModelData: !(codexSnapshot?.model ?? payload.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasContextData: codexSnapshot?.hasContextData ?? (payload.contextUsedTokens != nil || payload.contextPercent != nil || payload.tokenPercent != nil || payload.tokens != nil)
         )
     }
 
@@ -644,6 +650,10 @@ final class ProviderBalanceService {
         request.httpMethod = "GET"
         request.timeoutInterval = 8
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // OpenAI-compatible gateways commonly accept either bearer auth or
+        // an explicit API-key header; sending both keeps custom providers
+        // compatible without exposing the key anywhere in the UI or logs.
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let semaphore = DispatchSemaphore(value: 0)
         var result: BalanceSnapshot?

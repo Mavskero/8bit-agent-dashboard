@@ -92,13 +92,14 @@ final class DashboardView: NSView {
         let offsetX = (bounds.width - canvasSize.width * scale) / 2
         let offsetY = (bounds.height - canvasSize.height * scale) / 2
         let runtime = model.layout.runtimeStatus
-        let gearDesignX = runtime.x + 433
-        let gearDesignY = runtime.y + 7
+        let gearSize: CGFloat = 54
+        let gearDesignX = runtime.x + 424
+        let gearDesignY = runtime.y + 2
         settingsButton.frame = CGRect(
             x: offsetX + (padding + gearDesignX) * scale,
-            y: offsetY + (padding + designSize.height - gearDesignY - 42) * scale,
-            width: 42 * scale,
-            height: 42 * scale
+            y: offsetY + (padding + designSize.height - gearDesignY - gearSize) * scale,
+            width: gearSize * scale,
+            height: gearSize * scale
         ).integral
     }
 
@@ -212,11 +213,7 @@ final class DashboardView: NSView {
         PixelPainter.drawFrame(rect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.runtimeOpacity))
         var runtimeStyle = model.styles.style(for: .runtime)
         drawText("RUNTIME STATUS", key: .runtime, at: CGPoint(x: origin.x + 30, y: origin.y + 22), context: context, style: runtimeStyle)
-        let sourceLabel = model.runtime.source == .codex ? "CODEX" : "HERMES"
         runtimeStyle.pointSize *= 0.55
-        runtimeStyle.colorHex = PixelPalette.green.hexString
-        let sourceWidth = PixelPainter.textWidth(sourceLabel, style: runtimeStyle)
-        drawText(sourceLabel, key: .runtime, at: CGPoint(x: origin.x + 438 - sourceWidth, y: origin.y + 26), context: context, style: runtimeStyle)
 
         let rows: [(RuntimeIconKey, String, String, NSColor)] = [
             (.model, "MODEL", model.runtime.model, PixelPalette.cyan),
@@ -328,6 +325,9 @@ final class DashboardView: NSView {
             let latestStyle = model.styles.style(for: .activeSessionName)
             let latestTitle = fittedText(latest.title, style: latestStyle, maxWidth: 500)
             drawText(latestTitle, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 52), context: context)
+            if !latest.updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                drawText(latest.updatedAt, key: .activeSessionUpdatedAt, at: CGPoint(x: sessionOrigin.x, y: sessionOrigin.y), context: context)
+            }
             drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 30, y: latestRect.minY + 23), context: context)
             PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 548, height: 14), value: sessionContextValue(latest), color: PixelPalette.cyan, context: context)
         }

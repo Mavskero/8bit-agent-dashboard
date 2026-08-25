@@ -19,7 +19,7 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改这些位置：Clock、Date、Temperature、Now Playing Artist、Now Playing Title、Runtime Status、Hermes Agent、Active Session Header、Active Session Name、Recent Sessions。`Active Session Header` 和 `Active Session Name` 是两个独立选项，分别控制模块标题和当前 session 名称。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改这些位置：Clock、Date、Temperature、Now Playing Artist、Now Playing Title、Runtime Status、Hermes Agent、Active Session Header、Active Session Name、Active Session Last Conversation、Recent Sessions。`Active Session Header`、`Active Session Name` 和 `Active Session Last Conversation` 是独立选项，分别控制模块标题、当前 session 名称和最后对话时间。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixel Grid (built-in)`：兼容旧版本的内置 8bit 字体
@@ -50,7 +50,7 @@ hermes-done.png         hermes-error.png
 
 Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、provider、余额和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；外部状态 JSON 也支持 `model`、`thinking` / `reasoningEffort`、`fast` / `fastMode`、`provider`、`balance` 字段。thinking 与余额会按强度/金额使用不同颜色。
 
-主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。请求使用环境变量 `OPENAI_API_KEY`，启动时立即获取一次，之后按间隔刷新；请求失败时保留上次成功读数。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距。
+主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。请求使用环境变量 `OPENAI_API_KEY`，启动时立即获取一次，之后按间隔刷新；请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距。
 
 `WEATHER CITY` 可指定 `wttr.in` 查询城市；留空时继续使用 macOS Weather 缓存/降级数据。
 

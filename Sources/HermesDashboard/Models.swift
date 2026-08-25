@@ -89,6 +89,7 @@ enum DashboardStyleKey: String, CaseIterable {
     case agent
     case activeSessionTitle
     case activeSessionName
+    case activeSessionUpdatedAt
     case recentSession
 
     var displayName: String {
@@ -102,6 +103,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .agent: return "Hermes Agent"
         case .activeSessionTitle: return "Active Session · Header"
         case .activeSessionName: return "Active Session · Name"
+        case .activeSessionUpdatedAt: return "Active Session · Last Conversation"
         case .recentSession: return "Recent Sessions"
         }
     }
@@ -119,6 +121,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .agent: return CGPoint(x: 18, y: 18)
         case .activeSessionTitle: return CGPoint(x: 24, y: 16)
         case .activeSessionName: return CGPoint(x: 24, y: 46)
+        case .activeSessionUpdatedAt: return CGPoint(x: 500, y: 22)
         case .recentSession: return CGPoint(x: 12, y: 8)
         }
     }
@@ -134,10 +137,11 @@ struct DashboardStyles: Codable, Equatable {
             DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Yuppy TC", pointSize: 35, colorHex: "4CE4E3", x: 325, y: 200),
             DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "57E8E9", x: 42, y: 252),
             DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F7EDDB", x: 42, y: 287),
-            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 30, colorHex: "F5E9D3", x: 30, y: 22),
+            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 28, colorHex: "F7EDDB", x: 30, y: 22),
             DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "4CE4E3", x: 18, y: 18),
-            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 32, colorHex: "F7EDDB", x: 24, y: 10),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 32, colorHex: "F9F0E2", x: 24, y: 10),
             DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "Times New Roman", pointSize: 21, colorHex: "F9F0E2", x: 24, y: 44),
+            DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Menlo", pointSize: 12, colorHex: "4CE4E3", x: 500, y: 22),
             DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 18, colorHex: "F5E9D3", x: 12, y: 8)
         ])
     }
@@ -309,14 +313,14 @@ struct DashboardLayout: Codable, Equatable {
 
     static let defaults = DashboardLayout(
         padding: 12,
-        runtimeStatus: DashboardModulePosition(x: 770, y: 26),
-        hermesAgent: DashboardModulePosition(x: 16, y: 420),
-        activeSession: DashboardModulePosition(x: 618, y: 420),
+        runtimeStatus: DashboardModulePosition(x: 770, y: 20),
+        hermesAgent: DashboardModulePosition(x: 16, y: 416),
+        activeSession: DashboardModulePosition(x: 618, y: 416),
         runtimeOpacity: 0.2,
         agentOpacity: 0.2,
         activeSessionOpacity: 0.2,
         sessionCardOpacity: 0.0,
-        runtimeTitleSpacing: 18,
+        runtimeTitleSpacing: 48,
         runtimeIcons: DashboardLayout.defaultRuntimeIcons
     )
 
@@ -327,8 +331,8 @@ struct DashboardLayout: Codable, Equatable {
         }
         // Migrate the anchors used by the previous 2:1 and 7:9 compositions.
         // Other coordinates are user edits and remain untouched.
-        if [492, 444, 327, 417].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 420 }
-        if [492, 444, 327, 417].contains(decoded.activeSession.y) { decoded.activeSession.y = 420 }
+        if [492, 444, 327, 417, 420].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 416 }
+        if [492, 444, 327, 417, 420].contains(decoded.activeSession.y) { decoded.activeSession.y = 416 }
         return decoded
     }
 
@@ -381,18 +385,24 @@ struct ProviderSettings: Codable, Equatable {
     var lastBalanceValue: Double?
 
     static let defaults = ProviderSettings(
-        name: "OPENAI",
-        baseURL: "https://api.openai.com/v1",
-        balancePath: "/dashboard/billing/credit_grants",
-        balanceJSONPath: "total_available",
-        refreshInterval: 300,
+        name: "TeamRouter",
+        baseURL: "https://api.teamorouter.com",
+        balancePath: "/v1/billing/balance",
+        balanceJSONPath: "balance.value",
+        refreshInterval: 600,
         lastBalance: "$18.42",
         lastBalanceValue: 18.42
     )
 
     static func load() -> ProviderSettings {
         guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
-              let value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
+              var value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
+        // The first TeamRouter host used by the dashboard redirected through a
+        // web frontend. Migrate it to the API host used by Codex's provider config.
+        if value.baseURL == "https://teamorouter.com" {
+            value.baseURL = "https://api.teamorouter.com"
+            value.save()
+        }
         return value
     }
 
@@ -494,6 +504,8 @@ struct RuntimeStatus {
     var agentState: AgentState
     var sessions: [SessionInfo]
     var isLive: Bool
+    var hasModelData: Bool
+    var hasContextData: Bool
 
     static func demo(source: RuntimeSource) -> RuntimeStatus {
         RuntimeStatus(
@@ -516,8 +528,26 @@ struct RuntimeStatus {
                 SessionInfo(title: "Write release notes", progress: 24, status: "", updatedAt: "13:22"),
                 SessionInfo(title: "Review telemetry output", progress: 0, status: "", updatedAt: "12:10")
             ],
-            isLive: false
+            isLive: false,
+            hasModelData: false,
+            hasContextData: false
         )
+    }
+
+    func preservingTransientData(from previous: RuntimeStatus) -> RuntimeStatus {
+        var merged = self
+        if !hasModelData || model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.model = previous.model
+        }
+        if !hasContextData {
+            merged.contextPercent = previous.contextPercent
+            merged.tokenPercent = previous.tokenPercent
+            merged.sessions = previous.sessions
+        }
+        if activeSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.activeSession = previous.activeSession
+        }
+        return merged
     }
 }
 
@@ -553,6 +583,8 @@ final class DashboardModel: NSObject {
         Bundle.main.url(forResource: "kirby_s_chill_land", withExtension: "gif")?.path
     }
 
+    private static let defaultWeatherCity = "Fuzhou"
+
     private let weatherService = SystemWeatherService()
     private let musicService = AppleMusicService()
     private let runtimeService = RuntimeStatusService()
@@ -576,7 +608,7 @@ final class DashboardModel: NSObject {
         styles = DashboardStyles.load()
         layout = DashboardLayout.load()
         providerSettings = ProviderSettings.load()
-        weatherCity = UserDefaults.standard.string(forKey: Keys.weatherCity) ?? ""
+        weatherCity = UserDefaults.standard.string(forKey: Keys.weatherCity) ?? Self.defaultWeatherCity
         assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)))
         super.init()
     }
@@ -690,7 +722,7 @@ final class DashboardModel: NSObject {
         let source = runtimeSource
         runtimeService.fetch(source: source, provider: providerSettings) { [weak self] status in
             guard let self else { return }
-            self.runtime = status
+            self.runtime = status.preservingTransientData(from: self.runtime)
             self.notifyChange()
         }
     }
