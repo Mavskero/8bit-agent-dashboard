@@ -114,33 +114,23 @@ struct PixelPainter {
         ])
         let textSize = attributed.size()
         let imageSize = CGSize(width: ceil(textSize.width + 4), height: ceil(font.ascender - font.descender + 4))
-        // One switch controls the complete font rasterization path: smooth
-        // text uses a 2x source bitmap and high-quality resampling; sharp text
-        // uses a 1x bitmap with antialiasing and interpolation disabled.
-        let rasterScale: CGFloat = style.smoothRendering ? 2 : 1
         guard let imageContext = CGContext(
             data: nil,
-            width: max(Int(ceil(imageSize.width * rasterScale)), 1),
-            height: max(Int(ceil(imageSize.height * rasterScale)), 1),
+            width: max(Int(imageSize.width), 1),
+            height: max(Int(imageSize.height), 1),
             bitsPerComponent: 8,
             bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return }
-        imageContext.scaleBy(x: rasterScale, y: rasterScale)
-        imageContext.setShouldAntialias(style.smoothRendering)
-        imageContext.setAllowsAntialiasing(style.smoothRendering)
-        imageContext.setShouldSmoothFonts(style.smoothRendering)
-        imageContext.setAllowsFontSmoothing(style.smoothRendering)
-        imageContext.setShouldSubpixelPositionFonts(style.smoothRendering)
-        imageContext.setAllowsFontSubpixelPositioning(style.smoothRendering)
+        imageContext.setShouldAntialias(false)
         imageContext.setFillColor(NSColor.clear.cgColor)
         imageContext.fill(CGRect(origin: .zero, size: imageSize))
         let line = CTLineCreateWithAttributedString(attributed)
         imageContext.textPosition = CGPoint(x: 1, y: 2 - font.descender)
         CTLineDraw(line, imageContext)
         guard let image = imageContext.makeImage() else { return }
-        drawAsset(image, in: CGRect(x: point.x.rounded(.toNearestOrAwayFromZero), y: point.y.rounded(.toNearestOrAwayFromZero), width: imageSize.width, height: imageSize.height), interpolation: style.smoothRendering ? .high : .none, context: context)
+        drawAsset(image, in: CGRect(x: point.x, y: point.y, width: imageSize.width, height: imageSize.height), context: context)
     }
 
     static func textWidth(_ text: String, style: TextStyle) -> CGFloat {
@@ -319,11 +309,11 @@ struct PixelPainter {
         }
     }
 
-    static func drawAsset(_ image: CGImage, in rect: CGRect, interpolation: CGInterpolationQuality = .none, context: CGContext) {
+    static func drawAsset(_ image: CGImage, in rect: CGRect, context: CGContext) {
         context.saveGState()
         context.translateBy(x: rect.minX, y: rect.maxY)
         context.scaleBy(x: 1, y: -1)
-        context.interpolationQuality = interpolation
+        context.interpolationQuality = .none
         context.draw(image, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
     }

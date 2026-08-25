@@ -42,7 +42,6 @@ struct TextStyle: Codable, Equatable {
     var fontName: String
     var pointSize: CGFloat
     var colorHex: String
-    var smoothRendering: Bool
     /// The base position for this text group in design-canvas coordinates.
     /// Panel-contained styles use coordinates relative to their panel origin.
     var x: CGFloat
@@ -52,16 +51,14 @@ struct TextStyle: Codable, Equatable {
         case fontName
         case pointSize
         case colorHex
-        case smoothRendering
         case x
         case y
     }
 
-    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0, smoothRendering: Bool = true) {
+    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0) {
         self.fontName = fontName
         self.pointSize = pointSize
         self.colorHex = colorHex
-        self.smoothRendering = smoothRendering
         self.x = x
         self.y = y
     }
@@ -71,7 +68,6 @@ struct TextStyle: Codable, Equatable {
         fontName = try container.decode(String.self, forKey: .fontName)
         pointSize = try container.decode(CGFloat.self, forKey: .pointSize)
         colorHex = try container.decode(String.self, forKey: .colorHex)
-        smoothRendering = try container.decodeIfPresent(Bool.self, forKey: .smoothRendering) ?? true
         x = try container.decodeIfPresent(CGFloat.self, forKey: .x) ?? 0
         y = try container.decodeIfPresent(CGFloat.self, forKey: .y) ?? 0
     }

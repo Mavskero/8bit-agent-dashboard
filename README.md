@@ -19,14 +19,13 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather City、Now Playing、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等文字。每一项都支持 X/Y 画布坐标、字体、字号、颜色和平滑渲染开关；面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather City、Now Playing、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等文字。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixel Grid (built-in)`：兼容旧版本的内置 8bit 字体
 - 系统已安装字体，或用 `Import Font…` 导入 `.ttf` / `.otf` / `.ttc`
 - 字号
 - 颜色
-- Smooth / Hi-Res AA：按文字元素同时开启或关闭 2x 高分辨率字体位图、抗锯齿、字体平滑和高质量插值
 
 设置中的 `Import Font…` 会将字体保存到 Application Support，立即加入所有文字样式的字体列表，并在以后启动时自动注册。
 
