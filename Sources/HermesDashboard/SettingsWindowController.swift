@@ -21,7 +21,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.model = model
         self.parentWindow = parentWindow
         self.onDisplayChanged = onDisplayChanged
-        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 820, height: 720), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 900, height: 720), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         window.title = "Hermes Dashboard Settings"
         window.isFloatingPanel = true
         window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
@@ -29,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.hidesOnDeactivate = false
         window.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
         window.appearance = NSAppearance(named: .aqua)
-        window.minSize = NSSize(width: 760, height: 620)
+        window.minSize = NSSize(width: 880, height: 620)
         super.init(window: window)
         window.delegate = self
         buildContent()
@@ -89,12 +89,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         reloadDisplays()
 
         let weatherCityLabel = makeLabel("WEATHER CITY")
-        weatherCityLabel.frame = NSRect(x: 650, y: 606, width: 130, height: 18)
+        weatherCityLabel.frame = NSRect(x: 730, y: 606, width: 140, height: 18)
         content.addSubview(weatherCityLabel)
         weatherCityField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         weatherCityField.placeholderString = "Auto / city"
         weatherCityField.stringValue = model.weatherCity
-        weatherCityField.frame = NSRect(x: 650, y: 578, width: 140, height: 26)
+        weatherCityField.frame = NSRect(x: 730, y: 578, width: 140, height: 26)
         weatherCityField.target = self
         weatherCityField.action = #selector(weatherCityChanged(_:))
         content.addSubview(weatherCityField)
@@ -133,22 +133,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let styleTitle = makeLabel("TEXT STYLE OVERRIDES")
         styleTitle.frame = NSRect(x: 28, y: 376, width: 300, height: 20)
         content.addSubview(styleTitle)
-        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR")
+        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR       R       G       B")
         columnHint.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         columnHint.textColor = PixelPalette.cyanDim
-        columnHint.frame = NSRect(x: 38, y: 353, width: 730, height: 16)
+        columnHint.frame = NSRect(x: 38, y: 353, width: 830, height: 16)
         content.addSubview(columnHint)
 
         let documentHeight = CGFloat(DashboardStyleKey.allCases.count) * 44 + 12
-        let document = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: documentHeight))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 830, height: documentHeight))
         for (index, key) in DashboardStyleKey.allCases.enumerated() {
             let y = documentHeight - CGFloat(index + 1) * 44
             let row = StyleRow(key: key, style: model.styles.style(for: key), owner: self)
-            row.frame = NSRect(x: 20, y: y, width: 720, height: 40)
+            row.frame = NSRect(x: 8, y: y, width: 814, height: 40)
             document.addSubview(row)
             styleRows[key] = row
         }
-        let scroll = NSScrollView(frame: NSRect(x: 28, y: 82, width: 750, height: 260))
+        let scroll = NSScrollView(frame: NSRect(x: 28, y: 82, width: 844, height: 260))
         scroll.documentView = document
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
@@ -156,15 +156,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         addButton("Import Font…", x: 28, y: 44, width: 104, action: #selector(loadFont(_:)), to: content)
         addButton("Reset Text Styles", x: 140, y: 44, width: 130, action: #selector(resetStyles(_:)), to: content)
-        let note = NSTextField(wrappingLabelWithString: "Styles are saved immediately. Import Font… registers local .ttf/.otf/.ttc files for the font popups.")
+        let note = NSTextField(wrappingLabelWithString: "Styles are saved immediately. Imported .ttf/.otf/.ttc files are kept in Application Support and registered at launch.")
         note.font = NSFont.systemFont(ofSize: 10)
         note.textColor = NSColor.secondaryLabelColor
-        note.frame = NSRect(x: 290, y: 42, width: 480, height: 28)
+        note.frame = NSRect(x: 290, y: 42, width: 580, height: 28)
         content.addSubview(note)
 
         statusPathLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         statusPathLabel.textColor = NSColor.secondaryLabelColor
-        statusPathLabel.frame = NSRect(x: 28, y: 18, width: 750, height: 18)
+        statusPathLabel.frame = NSRect(x: 28, y: 18, width: 840, height: 18)
         content.addSubview(statusPathLabel)
         updateStatusPathLabel()
     }
@@ -306,8 +306,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             guard response == .OK, let self else { return }
             var names = Set(NSFontManager.shared.availableFontFamilies)
             for url in panel.urls {
-                _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-                for descriptor in CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] ?? [] {
+                let registeredURL = PixelFontRegistrar.importFont(from: url) ?? url
+                for descriptor in CTFontManagerCreateFontDescriptorsFromURL(registeredURL as CFURL) as? [CTFontDescriptor] ?? [] {
                     if let family = CTFontDescriptorCopyAttribute(descriptor, kCTFontFamilyNameAttribute) as? String {
                         names.insert(family)
                     }
@@ -334,6 +334,33 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             for: key
         )
     }
+
+    fileprivate func showColorPanel(for colorWell: NSColorWell) {
+        let panel = NSColorPanel.shared
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 3)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.setTarget(colorWell)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.async {
+            let visible = DashboardDisplayPreference.preferredScreen().visibleFrame
+            let frame = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: min(max(visible.minX, visible.midX - frame.width / 2), visible.maxX - frame.width),
+                y: min(max(visible.minY, visible.midY - frame.height / 2), visible.maxY - frame.height)
+            ))
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+}
+
+private final class DashboardColorWell: NSColorWell {
+    var onDoubleClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        if event.clickCount == 2 { onDoubleClick?() }
+    }
 }
 
 private final class StyleRow: NSView {
@@ -343,7 +370,10 @@ private final class StyleRow: NSView {
     private let xField = NSTextField(string: "")
     private let yField = NSTextField(string: "")
     private let sizeField = NSTextField(string: "")
-    private let colorWell = NSColorWell(frame: .zero)
+    private let colorWell = DashboardColorWell(frame: .zero)
+    private let redField = NSTextField(string: "")
+    private let greenField = NSTextField(string: "")
+    private let blueField = NSTextField(string: "")
 
     init(key: DashboardStyleKey, style: TextStyle, owner: SettingsWindowController) {
         self.key = key
@@ -387,10 +417,29 @@ private final class StyleRow: NSView {
         sizeField.action = #selector(sizeChanged(_:))
         addSubview(sizeField)
 
-        colorWell.frame = NSRect(x: 586, y: 5, width: 48, height: 28)
+        colorWell.frame = NSRect(x: 580, y: 5, width: 48, height: 28)
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
+        colorWell.onDoubleClick = { [weak self] in
+            guard let self else { return }
+            self.owner?.showColorPanel(for: self.colorWell)
+        }
         addSubview(colorWell)
+
+        let rgbFields = [("R", redField, CGFloat(638)), ("G", greenField, CGFloat(696)), ("B", blueField, CGFloat(754))]
+        for (title, field, x) in rgbFields {
+            let label = NSTextField(labelWithString: title)
+            label.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
+            label.textColor = NSColor(calibratedWhite: 0.18, alpha: 1)
+            label.frame = NSRect(x: x, y: 11, width: 10, height: 16)
+            addSubview(label)
+            field.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+            field.alignment = .right
+            field.frame = NSRect(x: x + 11, y: 7, width: 42, height: 24)
+            field.target = self
+            field.action = #selector(rgbChanged(_:))
+            addSubview(field)
+        }
         apply(style: style)
     }
 
@@ -414,6 +463,7 @@ private final class StyleRow: NSView {
         yField.stringValue = format(style.y)
         sizeField.stringValue = String(Int(style.pointSize.rounded()))
         colorWell.color = style.color
+        syncRGBFields()
     }
 
     private func selectedFontName() -> String {
@@ -433,8 +483,26 @@ private final class StyleRow: NSView {
 
     @objc private func fontChanged(_ sender: NSPopUpButton) { sendChange() }
     @objc private func sizeChanged(_ sender: NSTextField) { sendChange() }
-    @objc private func colorChanged(_ sender: NSColorWell) { sendChange() }
+    @objc private func colorChanged(_ sender: NSColorWell) {
+        syncRGBFields()
+        sendChange()
+    }
+    @objc private func rgbChanged(_ sender: NSTextField) {
+        let component: (NSTextField) -> CGFloat = { field in
+            CGFloat(min(max(Int(field.stringValue) ?? 0, 0), 255)) / 255
+        }
+        colorWell.color = NSColor(calibratedRed: component(redField), green: component(greenField), blue: component(blueField), alpha: 1)
+        syncRGBFields()
+        sendChange()
+    }
     @objc private func positionChanged(_ sender: NSTextField) { sendChange() }
+
+    private func syncRGBFields() {
+        guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return }
+        redField.stringValue = String(Int(round(rgb.redComponent * 255)))
+        greenField.stringValue = String(Int(round(rgb.greenComponent * 255)))
+        blueField.stringValue = String(Int(round(rgb.blueComponent * 255)))
+    }
 
     private func format(_ value: CGFloat) -> String {
         String(format: "%.2f", Double(value)).replacingOccurrences(of: ".00", with: "")
@@ -639,6 +707,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         static let sessionOpacity = 42
         static let sessionCardOpacity = 43
         static let runtimeTitleSpacing = 44
+        static let runtimeIconTitleSpacing = 45
     }
 
     private let model: DashboardModel
@@ -713,6 +782,8 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
 
         addLabel("TITLE / CONTENT GAP", x: 28, y: 138, width: 220, to: content)
         addField(tag: FieldTag.runtimeTitleSpacing, value: model.layout.runtimeTitleSpacing, x: 270, y: 134, to: content)
+        addLabel("ICON / TITLE GAP", x: 28, y: 98, width: 220, to: content)
+        addField(tag: FieldTag.runtimeIconTitleSpacing, value: model.layout.runtimeIconTitleSpacing, x: 270, y: 94, to: content)
         let iconButton = NSButton(title: "Runtime Icons…", target: self, action: #selector(showRuntimeIcons(_:)))
         iconButton.bezelStyle = .rounded
         iconButton.frame = NSRect(x: 370, y: 132, width: 130, height: 28)
@@ -721,7 +792,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         let note = NSTextField(wrappingLabelWithString: "X / Y values are design-canvas coordinates. Changes apply immediately and are saved for the next launch.")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
-        note.frame = NSRect(x: 28, y: 84, width: 520, height: 40)
+        note.frame = NSRect(x: 28, y: 48, width: 520, height: 40)
         content.addSubview(note)
     }
 
@@ -770,7 +841,8 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
             FieldTag.agentOpacity: model.layout.agentOpacity,
             FieldTag.sessionOpacity: model.layout.activeSessionOpacity,
             FieldTag.sessionCardOpacity: model.layout.sessionCardOpacity
-            ,FieldTag.runtimeTitleSpacing: model.layout.runtimeTitleSpacing
+            ,FieldTag.runtimeTitleSpacing: model.layout.runtimeTitleSpacing,
+            FieldTag.runtimeIconTitleSpacing: model.layout.runtimeIconTitleSpacing
         ]
         for (tag, value) in values { fields[tag]?.stringValue = format(value) }
     }
@@ -787,6 +859,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         layout.activeSessionOpacity = min(max(value(FieldTag.sessionOpacity), 0), 1)
         layout.sessionCardOpacity = min(max(value(FieldTag.sessionCardOpacity), 0), 1)
         layout.runtimeTitleSpacing = min(max(value(FieldTag.runtimeTitleSpacing), 0), 120)
+        layout.runtimeIconTitleSpacing = min(max(value(FieldTag.runtimeIconTitleSpacing), 0), 120)
         model.updateLayout(layout)
         reloadFields()
     }

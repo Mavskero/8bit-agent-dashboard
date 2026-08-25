@@ -9,6 +9,40 @@ enum PixelFontRegistrar {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         }
+        registerImportedFonts()
+    }
+
+    static func importFont(from sourceURL: URL) -> URL? {
+        let directory = importedFontsDirectory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let destination = directory.appendingPathComponent(sourceURL.lastPathComponent)
+            if sourceURL.standardizedFileURL != destination.standardizedFileURL {
+                try Data(contentsOf: sourceURL).write(to: destination, options: .atomic)
+            }
+            _ = CTFontManagerRegisterFontsForURL(destination as CFURL, .process, nil)
+            return destination
+        } catch {
+            _ = CTFontManagerRegisterFontsForURL(sourceURL as CFURL, .process, nil)
+            return nil
+        }
+    }
+
+    private static var importedFontsDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Hermes Dashboard", isDirectory: true)
+            .appendingPathComponent("Fonts", isDirectory: true)
+    }
+
+    private static func registerImportedFonts() {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: importedFontsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        for url in urls where ["ttf", "otf", "ttc"].contains(url.pathExtension.lowercased()) {
+            _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
     }
 }
 

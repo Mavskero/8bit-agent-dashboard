@@ -114,23 +114,30 @@ struct PixelPainter {
         ])
         let textSize = attributed.size()
         let imageSize = CGSize(width: ceil(textSize.width + 4), height: ceil(font.ascender - font.descender + 4))
+        let rasterScale: CGFloat = 2
         guard let imageContext = CGContext(
             data: nil,
-            width: max(Int(imageSize.width), 1),
-            height: max(Int(imageSize.height), 1),
+            width: max(Int(ceil(imageSize.width * rasterScale)), 1),
+            height: max(Int(ceil(imageSize.height * rasterScale)), 1),
             bitsPerComponent: 8,
             bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return }
-        imageContext.setShouldAntialias(false)
+        imageContext.scaleBy(x: rasterScale, y: rasterScale)
+        imageContext.setShouldAntialias(true)
+        imageContext.setAllowsAntialiasing(true)
+        imageContext.setShouldSmoothFonts(true)
+        imageContext.setAllowsFontSmoothing(true)
+        imageContext.setShouldSubpixelPositionFonts(true)
+        imageContext.setAllowsFontSubpixelPositioning(true)
         imageContext.setFillColor(NSColor.clear.cgColor)
         imageContext.fill(CGRect(origin: .zero, size: imageSize))
         let line = CTLineCreateWithAttributedString(attributed)
         imageContext.textPosition = CGPoint(x: 1, y: 2 - font.descender)
         CTLineDraw(line, imageContext)
         guard let image = imageContext.makeImage() else { return }
-        drawAsset(image, in: CGRect(x: point.x, y: point.y, width: imageSize.width, height: imageSize.height), context: context)
+        drawAsset(image, in: CGRect(x: point.x.rounded(.toNearestOrAwayFromZero), y: point.y.rounded(.toNearestOrAwayFromZero), width: imageSize.width, height: imageSize.height), interpolation: .high, context: context)
     }
 
     static func textWidth(_ text: String, style: TextStyle) -> CGFloat {
@@ -309,11 +316,11 @@ struct PixelPainter {
         }
     }
 
-    static func drawAsset(_ image: CGImage, in rect: CGRect, context: CGContext) {
+    static func drawAsset(_ image: CGImage, in rect: CGRect, interpolation: CGInterpolationQuality = .none, context: CGContext) {
         context.saveGState()
         context.translateBy(x: rect.minX, y: rect.maxY)
         context.scaleBy(x: 1, y: -1)
-        context.interpolationQuality = .none
+        context.interpolationQuality = interpolation
         context.draw(image, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
     }
@@ -323,16 +330,7 @@ struct PixelPainter {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         navy.setFill()
         context.fill(CGRect(x: 0, y: height * 0.60, width: width, height: height * 0.40))
-
-        let stars: [(CGFloat, CGFloat, CGFloat)] = [
-            (30, 24, 2), (190, 52, 2), (404, 30, 2), (690, 52, 2), (734, 96, 2), (52, 244, 2),
-            (505, 92, 2), (741, 210, 2), (1180, 30, 2), (700, 282, 2), (1124, 186, 2), (1080, 84, 2)
-        ]
-        cream.setFill()
-        for star in stars { context.fill(CGRect(x: star.0, y: star.1, width: star.2, height: star.2)) }
-
     }
 
-    private static var cream: NSColor { PixelPalette.cream }
     private static var navy: NSColor { PixelPalette.navy }
 }

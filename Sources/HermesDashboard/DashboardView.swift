@@ -191,7 +191,25 @@ final class DashboardView: NSView {
         let date = dateFormatter.string(from: now).uppercased()
         drawText(date, key: .date, at: CGPoint(x: 42, y: 186), context: context)
         let dateWidth = PixelPainter.textWidth(date, style: model.styles.style(for: .date))
-        drawText(model.weather.temperature, key: .temperature, at: CGPoint(x: 66 + dateWidth, y: 186), context: context)
+        let temperaturePoint = CGPoint(x: 66 + dateWidth, y: 186)
+        let temperatureStyle = model.styles.style(for: .temperature)
+        drawText(model.weather.temperature, key: .temperature, at: temperaturePoint, context: context)
+        let temperaturePosition = model.styles.style(for: .temperature)
+        let temperatureOrigin = CGPoint(
+            x: temperaturePoint.x + temperaturePosition.x - DashboardStyleKey.temperature.defaultPosition.x,
+            y: temperaturePoint.y + temperaturePosition.y - DashboardStyleKey.temperature.defaultPosition.y
+        )
+        let city = model.weather.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? model.weatherCity
+            : model.weather.location
+        if !city.isEmpty {
+            let cityStyle = model.styles.style(for: .weatherCity)
+            let cityPoint = CGPoint(
+                x: temperatureOrigin.x + PixelPainter.textWidth(model.weather.temperature, style: temperatureStyle) + 16,
+                y: temperatureOrigin.y + max((temperatureStyle.pointSize - cityStyle.pointSize) * 0.45, 0)
+            )
+            drawText(city, key: .weatherCity, at: cityPoint, context: context)
+        }
 
         // Borderless two-line music broadcast.
         let artist = model.music.artist.isEmpty ? "HERMES AGENT" : model.music.artist
@@ -234,9 +252,10 @@ final class DashboardView: NSView {
             }
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
-            drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 80, y: rowY + 4), context: context, style: rowStyle)
+            let labelX = origin.x + icon.x + 24 + model.layout.runtimeIconTitleSpacing
+            drawText(row.1, key: .runtime, at: CGPoint(x: labelX, y: rowY + 4), context: context, style: rowStyle)
             PixelPalette.border.setFill()
-            let labelEnd = origin.x + 80 + PixelPainter.textWidth(row.1, style: rowStyle)
+            let labelEnd = labelX + PixelPainter.textWidth(row.1, style: rowStyle)
             for dot in stride(from: Int(labelEnd + 16), to: Int(origin.x + 350), by: 10) {
                 context.fill(CGRect(x: CGFloat(dot), y: rowY + 19, width: 3, height: 2))
             }
@@ -318,7 +337,8 @@ final class DashboardView: NSView {
         let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: bottomModuleHeight)
         PixelPainter.drawFrame(sessionRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.activeSessionOpacity))
         let latestRect = CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 10, width: 596, height: 108)
-        PixelPainter.drawFrame(latestRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.navy.withAlphaComponent(model.layout.sessionCardOpacity))
+        let latestOpacity = max(model.layout.sessionCardOpacity, 0.16)
+        PixelPainter.drawFrame(latestRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.cyan.withAlphaComponent(latestOpacity))
         drawText("ACTIVE SESSION", key: .activeSessionTitle, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 22), context: context)
         let recent = Array(model.runtime.sessions.prefix(5))
         if let latest = recent.first {
@@ -329,7 +349,7 @@ final class DashboardView: NSView {
                 drawText(latest.updatedAt, key: .activeSessionUpdatedAt, at: CGPoint(x: sessionOrigin.x, y: sessionOrigin.y), context: context)
             }
             drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 30, y: latestRect.minY + 23), context: context)
-            PixelPainter.drawProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 548, height: 14), value: sessionContextValue(latest), color: PixelPalette.cyan, context: context)
+            drawSessionProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 548, height: 14), session: latest, context: context)
         }
         let positions = [
             CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 124, width: 292, height: 76),
@@ -350,7 +370,23 @@ final class DashboardView: NSView {
         let title = fittedText(session.title, style: titleStyle, maxWidth: rect.width - 54)
         drawText(title, key: .recentSession, at: CGPoint(x: rect.minX + 12, y: rect.minY + 12), context: context)
         drawSessionStatusLamp(session.status, at: CGPoint(x: rect.maxX - 26, y: rect.minY + 19), context: context)
-        PixelPainter.drawProgress(CGRect(x: rect.minX + 12, y: rect.minY + 46, width: rect.width - 24, height: 14), value: sessionContextValue(session), color: PixelPalette.cyan, context: context)
+        drawSessionProgress(CGRect(x: rect.minX + 12, y: rect.minY + 46, width: rect.width - 24, height: 14), session: session, context: context)
+    }
+
+    private func drawSessionProgress(_ rect: CGRect, session: SessionInfo, context: CGContext) {
+        let value = sessionContextValue(session)
+        let text = "\(value)%"
+        let percentStyle = model.styles.style(for: .sessionContextPercent)
+        let textWidth = PixelPainter.textWidth(text, style: percentStyle)
+        let percentWidth = max(textWidth + 8, 42)
+        let gap: CGFloat = 8
+        let progressRect = CGRect(x: rect.minX, y: rect.minY, width: max(rect.width - percentWidth - gap, 24), height: rect.height)
+        PixelPainter.drawProgress(progressRect, value: value, color: PixelPalette.cyan, context: context)
+        let percentPoint = CGPoint(
+            x: rect.maxX - percentWidth + (percentWidth - textWidth) / 2,
+            y: rect.minY - max((percentStyle.pointSize - rect.height) * 0.35, 0)
+        )
+        drawText(text, key: .sessionContextPercent, at: percentPoint, context: context)
     }
 
     private func sessionContextValue(_ session: SessionInfo) -> Int {

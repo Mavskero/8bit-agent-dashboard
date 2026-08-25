@@ -83,6 +83,7 @@ enum DashboardStyleKey: String, CaseIterable {
     case clock
     case date
     case temperature
+    case weatherCity
     case artist
     case title
     case runtime
@@ -91,12 +92,14 @@ enum DashboardStyleKey: String, CaseIterable {
     case activeSessionName
     case activeSessionUpdatedAt
     case recentSession
+    case sessionContextPercent
 
     var displayName: String {
         switch self {
         case .clock: return "Clock"
         case .date: return "Date"
         case .temperature: return "Temperature"
+        case .weatherCity: return "Weather City"
         case .artist: return "Now Playing · Artist"
         case .title: return "Now Playing · Title"
         case .runtime: return "Runtime Status"
@@ -105,6 +108,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .activeSessionName: return "Active Session · Name"
         case .activeSessionUpdatedAt: return "Active Session · Last Conversation"
         case .recentSession: return "Recent Sessions"
+        case .sessionContextPercent: return "Session Context Percent"
         }
     }
 
@@ -115,6 +119,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return CGPoint(x: 42, y: 48)
         case .date: return CGPoint(x: 42, y: 186)
         case .temperature: return CGPoint(x: 66, y: 186)
+        case .weatherCity: return CGPoint(x: 400, y: 186)
         case .artist: return CGPoint(x: 42, y: 252)
         case .title: return CGPoint(x: 42, y: 287)
         case .runtime: return CGPoint(x: 30, y: 22)
@@ -123,6 +128,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .activeSessionName: return CGPoint(x: 24, y: 46)
         case .activeSessionUpdatedAt: return CGPoint(x: 500, y: 22)
         case .recentSession: return CGPoint(x: 12, y: 8)
+        case .sessionContextPercent: return CGPoint(x: 0, y: 0)
         }
     }
 }
@@ -132,17 +138,19 @@ struct DashboardStyles: Codable, Equatable {
 
     static var defaults: DashboardStyles {
         return DashboardStyles(values: [
-            DashboardStyleKey.clock.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 166, colorHex: "FBF5ED", x: 50, y: 18),
-            DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 35, colorHex: "F7EDDB", x: 42, y: 186),
-            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Yuppy TC", pointSize: 35, colorHex: "4CE4E3", x: 325, y: 200),
+            DashboardStyleKey.clock.rawValue: TextStyle(fontName: "Pixelon", pointSize: 166, colorHex: "FCF7F1", x: 38, y: 27),
+            DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 40, colorHex: "F9F0E2", x: 42, y: 186),
+            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Pixelon", pointSize: 36, colorHex: "57E8E9", x: 220, y: 230),
+            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "57E8E9", x: 400, y: 186),
             DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "57E8E9", x: 42, y: 252),
             DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F7EDDB", x: 42, y: 287),
-            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 28, colorHex: "F7EDDB", x: 30, y: 22),
-            DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "4CE4E3", x: 18, y: 18),
-            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 32, colorHex: "F9F0E2", x: 24, y: 10),
-            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "Times New Roman", pointSize: 21, colorHex: "F9F0E2", x: 24, y: 44),
-            DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Menlo", pointSize: 12, colorHex: "4CE4E3", x: 500, y: 22),
-            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 18, colorHex: "F5E9D3", x: 12, y: 8)
+            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35.2, colorHex: "F9F0E2", x: 30, y: 22),
+            DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "57E8E9", x: 18, y: 18),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35.2, colorHex: "FAF3E8", x: 24, y: 10),
+            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "Tahoma", pointSize: 21, colorHex: "FAF3E8", x: 24, y: 44),
+            DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "57E8E9", x: 964, y: 49),
+            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "Hiragino Mincho ProN", pointSize: 18, colorHex: "F7EDDB", x: 12, y: 8),
+            DashboardStyleKey.sessionContextPercent.rawValue: TextStyle(fontName: "Pixelon", pointSize: 14, colorHex: "57E8E9", x: 0, y: 0)
         ])
     }
 
@@ -253,12 +261,13 @@ struct DashboardLayout: Codable, Equatable {
     var activeSessionOpacity: CGFloat
     var sessionCardOpacity: CGFloat
     var runtimeTitleSpacing: CGFloat
+    var runtimeIconTitleSpacing: CGFloat
     var runtimeIcons: [String: RuntimeIconStyle]
 
     private enum CodingKeys: String, CodingKey {
         case padding, runtimeStatus, hermesAgent, activeSession
         case runtimeOpacity, agentOpacity, activeSessionOpacity, sessionCardOpacity
-        case runtimeTitleSpacing, runtimeIcons
+        case runtimeTitleSpacing, runtimeIconTitleSpacing, runtimeIcons
     }
 
     init(
@@ -271,6 +280,7 @@ struct DashboardLayout: Codable, Equatable {
         activeSessionOpacity: CGFloat,
         sessionCardOpacity: CGFloat = 0.82,
         runtimeTitleSpacing: CGFloat = 18,
+        runtimeIconTitleSpacing: CGFloat = 28,
         runtimeIcons: [String: RuntimeIconStyle] = DashboardLayout.defaultRuntimeIcons
     ) {
         self.padding = padding
@@ -282,6 +292,7 @@ struct DashboardLayout: Codable, Equatable {
         self.activeSessionOpacity = activeSessionOpacity
         self.sessionCardOpacity = sessionCardOpacity
         self.runtimeTitleSpacing = runtimeTitleSpacing
+        self.runtimeIconTitleSpacing = runtimeIconTitleSpacing
         self.runtimeIcons = runtimeIcons
     }
 
@@ -296,6 +307,7 @@ struct DashboardLayout: Codable, Equatable {
         activeSessionOpacity = try container.decode(CGFloat.self, forKey: .activeSessionOpacity)
         sessionCardOpacity = try container.decodeIfPresent(CGFloat.self, forKey: .sessionCardOpacity) ?? 0.82
         runtimeTitleSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .runtimeTitleSpacing) ?? 18
+        runtimeIconTitleSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .runtimeIconTitleSpacing) ?? 28
         runtimeIcons = try container.decodeIfPresent([String: RuntimeIconStyle].self, forKey: .runtimeIcons) ?? DashboardLayout.defaultRuntimeIcons
         for key in RuntimeIconKey.allCases where runtimeIcons[key.rawValue] == nil {
             runtimeIcons[key.rawValue] = DashboardLayout.defaultRuntimeIcons[key.rawValue]
@@ -321,6 +333,7 @@ struct DashboardLayout: Codable, Equatable {
         activeSessionOpacity: 0.2,
         sessionCardOpacity: 0.0,
         runtimeTitleSpacing: 48,
+        runtimeIconTitleSpacing: 28,
         runtimeIcons: DashboardLayout.defaultRuntimeIcons
     )
 
@@ -386,7 +399,7 @@ struct ProviderSettings: Codable, Equatable {
 
     static let defaults = ProviderSettings(
         name: "TeamRouter",
-        baseURL: "https://api.teamorouter.com",
+        baseURL: "https://teamorouter.com",
         balancePath: "/v1/billing/balance",
         balanceJSONPath: "balance.value",
         refreshInterval: 600,
@@ -397,10 +410,10 @@ struct ProviderSettings: Codable, Equatable {
     static func load() -> ProviderSettings {
         guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
               var value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
-        // The first TeamRouter host used by the dashboard redirected through a
-        // web frontend. Migrate it to the API host used by Codex's provider config.
-        if value.baseURL == "https://teamorouter.com" {
-            value.baseURL = "https://api.teamorouter.com"
+        // TeamRouter exposes this endpoint on both hosts, but the confirmed
+        // Bearer-authenticated balance endpoint uses the root host.
+        if value.baseURL == "https://api.teamorouter.com" {
+            value.baseURL = "https://teamorouter.com"
             value.save()
         }
         return value

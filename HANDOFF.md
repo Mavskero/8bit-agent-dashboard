@@ -6,7 +6,7 @@
 
 这是一个不依赖 Xcode 工程的原生 macOS AppKit 8-bit dashboard。程序使用 Swift 编译为 `.app`，固定以 1280x720 设计画布绘制，再按实际屏幕比例缩放。
 
-- 本地项目：`/Users/yukarii/Documents/Codex/2026-08-24/github-plugin-github-openai-curated-remote/work/8bit-agent-dashboard`
+- 本地项目：`/Users/yukarii/Documents/Codex/2026-08-25/https-github-com-mavskero-8bit-agent/work/8bit-agent-dashboard`
 - GitHub：`https://github.com/Mavskero/8bit-agent-dashboard.git`
 - 分支：`main`
 - 本次源码基线提交：以 `main` 最新提交为准
@@ -15,7 +15,7 @@
 ## 构建、启动与打包
 
 ```sh
-cd /Users/yukarii/Documents/Codex/2026-08-24/github-plugin-github-openai-curated-remote/work/8bit-agent-dashboard
+cd /Users/yukarii/Documents/Codex/2026-08-25/https-github-com-mavskero-8bit-agent/work/8bit-agent-dashboard
 ./build.sh
 open build/HermesDashboard.app
 ```
@@ -45,13 +45,14 @@ killall HermesDashboard 2>/dev/null || true
 - 上下画布当前为 9:7 比例：上区 405px、下区 315px。
 - Hermes Agent 只显示一个最大像素小人，根据 working/thinking/done/idle/error 状态切换。
 - Active Session 布局为：最新 session 与标题位于同一个高亮内框；其余四个 session 在下方两行、每行两列。
-- Session 卡片只显示标题、状态灯和上下文分段方块进度条：绿色 DONE、红色 ERROR、蓝色闪烁 RUNNING。
+- Session 卡片显示标题、状态灯、上下文分段方块和右端百分比；最新 session 使用更高饱和度背景，明显区别于四个历史 session。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
 - 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
-- 设置窗口使用浅色高对比外观；支持 Import Font… 注册本地字体。
+- 设置窗口使用浅色高对比外观；每个颜色支持取色板和 R/G/B 数值编辑，双击色块会在 `DEFAULT DISPLAY` 指定的屏幕打开取色板。
+- Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
 - Provider Settings 支持 provider 名称、余额 base URL / path / JSON 字段路径、刷新间隔和上次余额持久化；余额请求读取 `OPENAI_API_KEY`，启动立即请求，失败保持旧值。
 - Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、provider 和余额；余额按 >=10、5-10、<5 显示绿/黄/红，thinking 按强度显示不同颜色。
-- Runtime Icons 设置支持六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y；可单独设置 Runtime 标题与内容间距。
+- Runtime Icons 设置支持六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y；可单独设置 Runtime 标题与内容间距以及 icon 与行标题的间距。
 - `WEATHER CITY` 设置使用 `wttr.in` 获取指定城市天气，留空时使用 macOS Weather 缓存/降级值。
 
 ## 当前项目默认设置
@@ -65,9 +66,10 @@ hermesAgent = (16, 416), opacity = 0.2
 activeSession = (618, 416), opacity = 0.2
 sessionCardOpacity = 0.0
 runtimeTitleSpacing = 48
+runtimeIconTitleSpacing = 28
 ```
 
-文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Active Session · Last Conversation` 控制当前 session 右侧最后对话时间。默认 Provider 为 TeamRouter，余额接口为 `https://api.teamorouter.com` + `/v1/billing/balance`，JSON 字段为 `balance.value`，刷新间隔为 600 秒。默认天气城市为 Fuzhou。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Weather City`、`Session Context Percent` 和 `Active Session · Last Conversation` 都有独立的字体与坐标设置。默认 Provider 为 TeamRouter，余额接口为 `https://teamorouter.com` + `/v1/billing/balance`，JSON 字段为 `balance.value`，刷新间隔为 600 秒。请求只发送 `Authorization: Bearer <OPENAI_API_KEY>`。默认天气城市为 Fuzhou。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 
@@ -98,9 +100,9 @@ activeSession = (618, 416)
                  (x + 328, y + 202, width 292, height 76)
 ```
 
-Active Session 外框使用普通 `borderBright`，最新 session 内框使用高亮 `cyan`。底部模块默认 y=416 是为避免 288px 高度超出外部 720px 画布而设置的；如果继续调整高度，必须同步检查 `y + height <= 712`。
+Active Session 外框使用普通 `borderBright`，最新 session 内框使用高亮 `cyan` 边框和至少 0.16 的 cyan 填充。底部模块默认 y=416 是为避免 288px 高度超出外部 720px 画布而设置的；如果继续调整高度，必须同步检查 `y + height <= 712`。
 
-Runtime Status 行首从模块原点的标题下方开始，每行间距 35px；标题与内容默认间距为 48。行尾彩灯和右上角 CODEX/HERMES 来源字样已删除。齿轮按钮使用 54x54 的点击区域。
+Runtime Status 行首从模块原点的标题下方开始，每行间距 35px；标题与内容默认间距为 48，icon 与行标题默认间距为 28。行尾彩灯和右上角 CODEX/HERMES 来源字样已删除。齿轮按钮使用 54x54 的点击区域。
 
 ## 代码结构
 
@@ -135,7 +137,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。
 - `wallpaperCleared`：用户明确清除 Bundle 默认壁纸后的标记。
 - `providerSettings`：provider 名称、余额请求设置、刷新间隔和最后成功余额。
-- `weatherCity`：天气 API 城市；`DashboardLayout.runtimeTitleSpacing` / `runtimeIcons`：Runtime 标题间距和图标设置。
+- `weatherCity`：天气 API 城市；`DashboardLayout.runtimeTitleSpacing` / `runtimeIconTitleSpacing` / `runtimeIcons`：Runtime 间距和图标设置。
 
 `DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417、420 底部 y 值会迁移到 416；自定义的其他坐标保持不变。
 
@@ -143,7 +145,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 
 1. `git status --short --branch`，确认已在 `main` 且没有意外改动。
 2. 运行 `./build.sh`，确认 Swift 编译和资源复制正常。
-3. 启动 App 截图检查：底部模块不越界、最新 session 内框高亮、四个子卡片右端对齐、分段进度条可见。
+3. 启动 App 截图检查：底部模块不越界、最新 session 内框高亮、四个子卡片右端对齐、分段进度条与百分比可见。
 4. 打开设置，确认 `Layout / Opacity…` 中存在 `SESSION CARDS` 字段。
 5. 用 SQLite 检查当前会话状态和 token 数据是否存在；不要把 `~/.codex` 中的私密内容提交到仓库。
 6. 修改后同步 `outputs/HermesDashboard.app.zip`，运行 `unzip -t`，再提交和推送。
@@ -154,3 +156,4 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `state_5.sqlite`、`thread_history_1.sqlite` 和 `codex-dev.db` 是本机运行时数据，不属于项目文件，不能复制进仓库。
 - Weather.app 和 Apple Music 的读取可能需要 macOS 隐私权限；权限不足时程序应继续使用降级数据，不要把权限错误当作启动失败。
 - 全屏 screen-saver 层级窗口会影响文件选择器，所以设置中的文件面板通过临时降低父窗口层级来打开；修改窗口层级时需要复测 Choose GIF / Choose Folder。
+- Finder 启动不会继承终端 shell 的 `OPENAI_API_KEY`。Provider 设置会显示当前 App 进程是否检测到变量；若显示 missing，需要先通过 launchd 提供该变量并完全退出后重开 App，密钥不能写入源码、偏好或日志。

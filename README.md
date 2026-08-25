@@ -1,6 +1,6 @@
 # Hermes Dashboard
 
-这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放；画布上下区域按 7:9 比例分割。
+这是一个不依赖 Xcode 工程的原生 macOS AppKit dashboard，设计画布固定为 1280×720，并在启动时以全屏窗口显示。窗口隐藏 Dock 和顶部菜单栏，实际显示器尺寸不同于 1280×720 时，会在内部按 16:9 画布等比缩放；画布上下区域按 9:7 比例分割。
 
 ## 最终目标设计图
 
@@ -19,15 +19,15 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改这些位置：Clock、Date、Temperature、Now Playing Artist、Now Playing Title、Runtime Status、Hermes Agent、Active Session Header、Active Session Name、Active Session Last Conversation、Recent Sessions。`Active Session Header`、`Active Session Name` 和 `Active Session Last Conversation` 是独立选项，分别控制模块标题、当前 session 名称和最后对话时间。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather City、Now Playing、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等文字。每一项都支持 X/Y 画布坐标、字体、字号和颜色；面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixel Grid (built-in)`：兼容旧版本的内置 8bit 字体
-- 系统已安装字体，或用 `Load Font…` 临时注册 `.ttf` / `.otf` / `.ttc`
+- 系统已安装字体，或用 `Import Font…` 导入 `.ttf` / `.otf` / `.ttc`
 - 字号
 - 颜色
 
-设置中的 `Import Font…` 可以注册本地 `.ttf`、`.otf` 或 `.ttc` 字体，并立即加入所有文字样式的字体列表。
+设置中的 `Import Font…` 会将字体保存到 Application Support，立即加入所有文字样式的字体列表，并在以后启动时自动注册。
 
 修改后即时生效并保存到应用偏好设置；`Reset Text Styles` 恢复预览图默认样式。
 
@@ -50,7 +50,7 @@ hermes-done.png         hermes-error.png
 
 Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、provider、余额和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；外部状态 JSON 也支持 `model`、`thinking` / `reasoningEffort`、`fast` / `fastMode`、`provider`、`balance` 字段。thinking 与余额会按强度/金额使用不同颜色。
 
-主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。请求使用环境变量 `OPENAI_API_KEY`，启动时立即获取一次，之后按间隔刷新；请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距。
+主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。TeamRouter 默认请求为 `https://teamorouter.com/v1/billing/balance`，使用环境变量 `OPENAI_API_KEY` 作为 Bearer token；启动时立即获取一次，之后按间隔刷新，请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距，`ICON / TITLE GAP` 控制行内图标与标题的间距。
 
 `WEATHER CITY` 可指定 `wttr.in` 查询城市；留空时继续使用 macOS Weather 缓存/降级数据。
 
@@ -74,7 +74,7 @@ Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast �
 
 ## GIF 壁纸
 
-按 `S` 打开设置，选择本地 GIF。GIF 会以低透明度绘制在 dashboard 后方，并按照原始帧时长播放；点击 `Clear` 后恢复内置像素夜景背景。资源文件夹也可随时点击 `Clear` 恢复内置天气与 Agent 图标。
+按 `S` 打开设置，选择本地 GIF。GIF 会以低透明度绘制在 dashboard 后方，并按照原始帧时长播放；点击 `Clear` 后恢复无星星特效的纯色像素背景。资源文件夹也可随时点击 `Clear` 恢复内置天气与 Agent 图标。
 
 ## 默认显示器
 

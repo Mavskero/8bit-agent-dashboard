@@ -650,10 +650,6 @@ final class ProviderBalanceService {
         request.httpMethod = "GET"
         request.timeoutInterval = 8
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        // OpenAI-compatible gateways commonly accept either bearer auth or
-        // an explicit API-key header; sending both keeps custom providers
-        // compatible without exposing the key anywhere in the UI or logs.
-        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let semaphore = DispatchSemaphore(value: 0)
         var result: BalanceSnapshot?
@@ -690,7 +686,9 @@ final class ProviderBalanceService {
         if let string = value as? String {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             let numeric = numericValue(in: trimmed)
-            return trimmed.isEmpty ? nil : BalanceSnapshot(display: trimmed, numeric: numeric)
+            guard !trimmed.isEmpty else { return nil }
+            let display = Double(trimmed).map(format) ?? trimmed
+            return BalanceSnapshot(display: display, numeric: numeric)
         }
         return nil
     }
