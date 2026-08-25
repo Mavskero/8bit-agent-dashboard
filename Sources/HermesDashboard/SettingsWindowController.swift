@@ -375,6 +375,7 @@ private final class StyleRow: NSView {
     private let greenField = NSTextField(string: "")
     private let blueField = NSTextField(string: "")
     private let smoothButton = NSButton(checkboxWithTitle: "Smooth + 2x", target: nil, action: nil)
+    private var suppressColorCallback = false
 
     init(key: DashboardStyleKey, style: TextStyle, owner: SettingsWindowController) {
         self.key = key
@@ -492,6 +493,7 @@ private final class StyleRow: NSView {
     @objc private func fontChanged(_ sender: NSPopUpButton) { sendChange() }
     @objc private func sizeChanged(_ sender: NSTextField) { sendChange() }
     @objc private func colorChanged(_ sender: NSColorWell) {
+        guard !suppressColorCallback else { return }
         syncRGBFields()
         sendChange()
     }
@@ -499,8 +501,9 @@ private final class StyleRow: NSView {
         let component: (NSTextField) -> CGFloat = { field in
             CGFloat(min(max(Int(field.stringValue) ?? 0, 0), 255)) / 255
         }
+        suppressColorCallback = true
         colorWell.color = NSColor(calibratedRed: component(redField), green: component(greenField), blue: component(blueField), alpha: 1)
-        syncRGBFields()
+        suppressColorCallback = false
         sendChange()
     }
     @objc private func positionChanged(_ sender: NSTextField) { sendChange() }
