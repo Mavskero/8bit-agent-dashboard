@@ -26,7 +26,7 @@ open build/HermesDashboard.app
 - 系统已安装字体，或用 `Import Font…` 导入 `.ttf` / `.otf` / `.ttc`
 - 字号
 - 颜色
-- Smooth：按文字元素单独开启或关闭抗锯齿与高分辨率字体渲染
+- Smooth / Hi-Res AA：按文字元素同时开启或关闭 2x 高分辨率字体位图、抗锯齿、字体平滑和高质量插值
 
 设置中的 `Import Font…` 会将字体保存到 Application Support，立即加入所有文字样式的字体列表，并在以后启动时自动注册。
 

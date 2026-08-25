@@ -374,7 +374,7 @@ private final class StyleRow: NSView {
     private let redField = NSTextField(string: "")
     private let greenField = NSTextField(string: "")
     private let blueField = NSTextField(string: "")
-    private let smoothButton = NSButton(checkboxWithTitle: "Smooth", target: nil, action: nil)
+    private let smoothButton = NSButton(checkboxWithTitle: "Smooth + 2x", target: nil, action: nil)
 
     init(key: DashboardStyleKey, style: TextStyle, owner: SettingsWindowController) {
         self.key = key

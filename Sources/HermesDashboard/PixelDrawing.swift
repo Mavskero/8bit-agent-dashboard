@@ -114,6 +114,9 @@ struct PixelPainter {
         ])
         let textSize = attributed.size()
         let imageSize = CGSize(width: ceil(textSize.width + 4), height: ceil(font.ascender - font.descender + 4))
+        // One switch controls the complete font rasterization path: smooth
+        // text uses a 2x source bitmap and high-quality resampling; sharp text
+        // uses a 1x bitmap with antialiasing and interpolation disabled.
         let rasterScale: CGFloat = style.smoothRendering ? 2 : 1
         guard let imageContext = CGContext(
             data: nil,
