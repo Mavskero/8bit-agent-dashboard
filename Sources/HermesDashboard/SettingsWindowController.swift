@@ -133,7 +133,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let styleTitle = makeLabel("TEXT STYLE OVERRIDES")
         styleTitle.frame = NSRect(x: 28, y: 376, width: 300, height: 20)
         content.addSubview(styleTitle)
-        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR       R       G       B       SMOOTH + 2X")
+        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR       R       G       B       SMOOTH + 8X")
         columnHint.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         columnHint.textColor = PixelPalette.cyanDim
         columnHint.frame = NSRect(x: 38, y: 353, width: 930, height: 16)
@@ -374,8 +374,9 @@ private final class StyleRow: NSView {
     private let redField = NSTextField(string: "")
     private let greenField = NSTextField(string: "")
     private let blueField = NSTextField(string: "")
-    private let smoothButton = NSButton(checkboxWithTitle: "Smooth + 2x", target: nil, action: nil)
+    private let smoothButton = NSButton(checkboxWithTitle: "Smooth + 8x", target: nil, action: nil)
     private var suppressColorCallback = false
+    private var pendingRGB: [Int]?
 
     init(key: DashboardStyleKey, style: TextStyle, owner: SettingsWindowController) {
         self.key = key
@@ -460,6 +461,8 @@ private final class StyleRow: NSView {
     }
 
     func apply(style: TextStyle) {
+        pendingRGB = nil
+        suppressColorCallback = false
         if style.fontName == TextStyle.builtInPixelFont {
             fontPopup.selectItem(at: 0)
         } else {
@@ -494,20 +497,46 @@ private final class StyleRow: NSView {
     @objc private func sizeChanged(_ sender: NSTextField) { sendChange() }
     @objc private func colorChanged(_ sender: NSColorWell) {
         guard !suppressColorCallback else { return }
+        // Assigning NSColorWell.color from the RGB fields can enqueue a later
+        // action. Ignore that echo so the values the user typed remain visible.
+        if let pendingRGB, pendingRGB == currentColorRGBValues() { return }
+        pendingRGB = nil
         syncRGBFields()
         sendChange()
     }
     @objc private func rgbChanged(_ sender: NSTextField) {
-        let component: (NSTextField) -> CGFloat = { field in
-            CGFloat(min(max(Int(field.stringValue) ?? 0, 0), 255)) / 255
-        }
+        let values = currentRGBValues()
+        pendingRGB = values
         suppressColorCallback = true
-        colorWell.color = NSColor(calibratedRed: component(redField), green: component(greenField), blue: component(blueField), alpha: 1)
-        suppressColorCallback = false
+        // Temporarily detach the target as well as suppressing the callback.
+        // NSColorWell may deliver its action asynchronously after assignment.
+        colorWell.target = nil
+        colorWell.color = NSColor(
+            calibratedRed: CGFloat(values[0]) / 255,
+            green: CGFloat(values[1]) / 255,
+            blue: CGFloat(values[2]) / 255,
+            alpha: 1
+        )
         sendChange()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.colorWell.target = self
+            self.suppressColorCallback = false
+        }
     }
     @objc private func positionChanged(_ sender: NSTextField) { sendChange() }
     @objc private func smoothChanged(_ sender: NSButton) { sendChange() }
+    private func currentRGBValues() -> [Int] {
+        [redField, greenField, blueField].map { field in
+            min(max(Int(field.stringValue) ?? 0, 0), 255)
+        }
+    }
+    private func currentColorRGBValues() -> [Int] {
+        guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return [] }
+        return [rgb.redComponent, rgb.greenComponent, rgb.blueComponent].map { component in
+            Int(round(component * 255))
+        }
+    }
     private func syncRGBFields() {
         guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return }
         redField.stringValue = String(Int(round(rgb.redComponent * 255)))

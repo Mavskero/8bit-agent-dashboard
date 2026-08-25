@@ -121,7 +121,8 @@ final class SystemWeatherService {
             let condition: WeatherCondition
             if description.contains("snow") { condition = .snow }
             else if description.contains("rain") || description.contains("drizzle") { condition = .rain }
-            else if description.contains("cloud") || description.contains("overcast") { condition = .partlyCloudy }
+            else if description.contains("overcast") { condition = .cloudy }
+            else if description.contains("cloud") { condition = .partlyCloudy }
             else if description.contains("clear") || description.contains("sun") { condition = .clear }
             else { condition = .unknown }
             result = WeatherSnapshot(temperature: "\(temp)°C", condition: condition, location: city, isLive: true)
@@ -178,7 +179,9 @@ final class SystemWeatherService {
             condition = .snow
         } else if lower.contains("rain") || lower.contains("雨") || lower.contains("drizzle") {
             condition = .rain
-        } else if lower.contains("cloud") || lower.contains("overcast") || lower.contains("多云") {
+        } else if lower.contains("overcast") || lower.contains("阴") {
+            condition = .cloudy
+        } else if lower.contains("cloud") || lower.contains("多云") {
             condition = .partlyCloudy
         } else if lower.contains("clear") || lower.contains("sunny") || lower.contains("晴") {
             condition = .clear

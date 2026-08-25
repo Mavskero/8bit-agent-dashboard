@@ -103,7 +103,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return "Clock"
         case .date: return "Date"
         case .temperature: return "Temperature"
-        case .weatherCity: return "Weather City"
+        case .weatherCity: return "Weather Condition"
         case .artist: return "Now Playing · Artist"
         case .title: return "Now Playing · Title"
         case .runtime: return "Runtime Status"
@@ -142,19 +142,19 @@ struct DashboardStyles: Codable, Equatable {
 
     static var defaults: DashboardStyles {
         return DashboardStyles(values: [
-            DashboardStyleKey.clock.rawValue: TextStyle(fontName: "Pixelon", pointSize: 166, colorHex: "FCF7F1", x: 38, y: 27),
-            DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 40, colorHex: "F9F0E2", x: 42, y: 186),
-            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Pixelon", pointSize: 36, colorHex: "57E8E9", x: 220, y: 230),
-            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "57E8E9", x: 400, y: 186),
-            DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "57E8E9", x: 42, y: 252),
-            DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F7EDDB", x: 42, y: 287),
-            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35.2, colorHex: "F9F0E2", x: 30, y: 22),
-            DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "57E8E9", x: 18, y: 18),
-            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35.2, colorHex: "FAF3E8", x: 24, y: 10),
-            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "Tahoma", pointSize: 21, colorHex: "FAF3E8", x: 24, y: 44),
-            DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "57E8E9", x: 964, y: 49),
-            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "Hiragino Mincho ProN", pointSize: 18, colorHex: "F7EDDB", x: 12, y: 8),
-            DashboardStyleKey.sessionContextPercent.rawValue: TextStyle(fontName: "Pixelon", pointSize: 14, colorHex: "57E8E9", x: 0, y: 0)
+            DashboardStyleKey.clock.rawValue: TextStyle(fontName: "Pixelon", pointSize: 166, colorHex: "FDFAF6", x: 38, y: 27, smoothRendering: false),
+            DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 40, colorHex: "FAF3E8", x: 42, y: 186, smoothRendering: false),
+            DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Pixelon", pointSize: 36, colorHex: "72EDF2", x: 220, y: 230, smoothRendering: true),
+            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 400, y: 186, smoothRendering: false),
+            DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "64EBEE", x: 42, y: 252, smoothRendering: true),
+            DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F9F0E2", x: 42, y: 287, smoothRendering: true),
+            DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "Pixelon", pointSize: 39, colorHex: "FBF5ED", x: 30, y: 22, smoothRendering: true),
+            DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "64EBEE", x: 18, y: 18, smoothRendering: false),
+            DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35, colorHex: "FDF9F4", x: 24, y: 10, smoothRendering: true),
+            DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "HanziPen SC", pointSize: 21, colorHex: "F5EAD2", x: 24, y: 44, smoothRendering: true),
+            DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Pixelon", pointSize: 22, colorHex: "81EFF5", x: 957, y: 48, smoothRendering: true),
+            DashboardStyleKey.recentSession.rawValue: TextStyle(fontName: "HanziPen SC", pointSize: 18, colorHex: "FAF3E8", x: 12, y: 3, smoothRendering: true),
+            DashboardStyleKey.sessionContextPercent.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "72EDF2", x: 0, y: -3, smoothRendering: false)
         ])
     }
 
@@ -345,7 +345,7 @@ struct DashboardLayout: Codable, Equatable {
         activeSessionOpacity: 0.2,
         sessionCardOpacity: 0.0,
         runtimeTitleSpacing: 48,
-        runtimeIconTitleSpacing: 28,
+        runtimeIconTitleSpacing: 10,
         runtimeIcons: DashboardLayout.defaultRuntimeIcons
     )
 
@@ -410,13 +410,13 @@ struct ProviderSettings: Codable, Equatable {
     var lastBalanceValue: Double?
 
     static let defaults = ProviderSettings(
-        name: "TeamRouter",
+        name: "TeamoRouter",
         baseURL: "https://teamorouter.com",
         balancePath: "/v1/billing/balance",
         balanceJSONPath: "balance.value",
         refreshInterval: 600,
-        lastBalance: "$18.42",
-        lastBalanceValue: 18.42
+        lastBalance: "$19.58",
+        lastBalanceValue: 19.57842664
     )
 
     static func load() -> ProviderSettings {
@@ -430,7 +430,7 @@ struct ProviderSettings: Codable, Equatable {
             }
             value.save()
         }
-        // TeamRouter exposes this endpoint on both hosts, but the confirmed
+        // TeamoRouter exposes this endpoint on both hosts, but the confirmed
         // Bearer-authenticated balance endpoint uses the root host.
         if value.baseURL == "https://api.teamorouter.com" {
             value.baseURL = "https://teamorouter.com"
@@ -480,6 +480,17 @@ enum WeatherCondition {
     case rain
     case snow
     case unknown
+
+    var displayName: String {
+        switch self {
+        case .clear: return "CLEAR"
+        case .partlyCloudy: return "PARTLY CLOUDY"
+        case .cloudy: return "CLOUDY"
+        case .rain: return "RAIN"
+        case .snow: return "SNOW"
+        case .unknown: return "UNKNOWN"
+        }
+    }
 }
 
 struct WeatherSnapshot {

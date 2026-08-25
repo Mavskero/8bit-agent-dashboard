@@ -199,16 +199,14 @@ final class DashboardView: NSView {
             x: temperaturePoint.x + temperaturePosition.x - DashboardStyleKey.temperature.defaultPosition.x,
             y: temperaturePoint.y + temperaturePosition.y - DashboardStyleKey.temperature.defaultPosition.y
         )
-        let city = model.weather.location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? model.weatherCity
-            : model.weather.location
-        if !city.isEmpty {
-            let cityStyle = model.styles.style(for: .weatherCity)
+        let weatherLabel = model.weather.condition.displayName
+        if !weatherLabel.isEmpty {
+            let weatherStyle = model.styles.style(for: .weatherCity)
             let cityPoint = CGPoint(
                 x: temperatureOrigin.x + PixelPainter.textWidth(model.weather.temperature, style: temperatureStyle) + 16,
-                y: temperatureOrigin.y + max((temperatureStyle.pointSize - cityStyle.pointSize) * 0.45, 0)
+                y: temperatureOrigin.y + max((temperatureStyle.pointSize - weatherStyle.pointSize) * 0.45, 0)
             )
-            drawText(city, key: .weatherCity, at: cityPoint, context: context)
+            drawText(weatherLabel, key: .weatherCity, at: cityPoint, context: context)
         }
 
         // Borderless two-line music broadcast.
@@ -341,22 +339,24 @@ final class DashboardView: NSView {
         PixelPainter.drawFrame(latestRect, color: PixelPalette.cyan, context: context, fill: PixelPalette.cyan.withAlphaComponent(latestOpacity))
         drawText("ACTIVE SESSION", key: .activeSessionTitle, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 22), context: context)
         let recent = Array(model.runtime.sessions.prefix(5))
-        if let latest = recent.first {
-            let latestStyle = model.styles.style(for: .activeSessionName)
-            let latestTitle = fittedText(latest.title, style: latestStyle, maxWidth: 500)
-            drawText(latestTitle, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 40, y: sessionOrigin.y + 52), context: context)
-            if !latest.updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                drawText(latest.updatedAt, key: .activeSessionUpdatedAt, at: CGPoint(x: sessionOrigin.x, y: sessionOrigin.y), context: context)
-            }
-            drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 30, y: latestRect.minY + 23), context: context)
-            drawSessionProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 548, height: 14), session: latest, context: context)
-        }
         let positions = [
             CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 124, width: 292, height: 76),
             CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 124, width: 292, height: 76),
             CGRect(x: sessionOrigin.x + 24, y: sessionOrigin.y + 202, width: 292, height: 76),
             CGRect(x: sessionOrigin.x + 328, y: sessionOrigin.y + 202, width: 292, height: 76)
         ]
+        if let latest = recent.first {
+            let latestStyle = model.styles.style(for: .activeSessionName)
+            let latestTitle = fittedText(latest.title, style: latestStyle, maxWidth: 500)
+            drawText(latestTitle, key: .activeSessionName, at: CGPoint(x: sessionOrigin.x + 36, y: sessionOrigin.y + 52), context: context)
+            if !latest.updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                drawText(latest.updatedAt, key: .activeSessionUpdatedAt, at: CGPoint(x: sessionOrigin.x, y: sessionOrigin.y), context: context)
+            }
+            // Match the right-hand historical card's inner right edge: its
+            // lamp and progress/percent columns now share one vertical guide.
+            drawSessionStatusLamp(latest.status, at: CGPoint(x: latestRect.maxX - 26, y: latestRect.minY + 23), context: context)
+            drawSessionProgress(CGRect(x: sessionOrigin.x + 40, y: sessionOrigin.y + 84, width: 568, height: 14), session: latest, context: context)
+        }
         // The latest session lives in the shared header frame above; only the
         // remaining four sessions are assigned to these child frames.
         for (index, card) in recent.dropFirst().prefix(4).enumerated() {
