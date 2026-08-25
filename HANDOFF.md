@@ -48,6 +48,11 @@ killall HermesDashboard 2>/dev/null || true
 - Session 卡片只显示标题、状态灯和上下文分段方块进度条：绿色 DONE、红色 ERROR、蓝色闪烁 RUNNING。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
 - 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
+- 设置窗口使用浅色高对比外观；支持 Import Font… 注册本地字体。
+- Provider Settings 支持 provider 名称、余额 base URL / path / JSON 字段路径、刷新间隔和上次余额持久化；余额请求读取 `OPENAI_API_KEY`，启动立即请求，失败保持旧值。
+- Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、provider 和余额；余额按 >=10、5-10、<5 显示绿/黄/红，thinking 按强度显示不同颜色。
+- Runtime Icons 设置支持六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y；可单独设置 Runtime 标题与内容间距。
+- `WEATHER CITY` 设置使用 `wttr.in` 获取指定城市天气，留空时使用 macOS Weather 缓存/降级值。
 
 ## 当前项目默认设置
 
@@ -128,6 +133,8 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `runtimeSource`：Codex 或 Hermes。
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。
 - `wallpaperCleared`：用户明确清除 Bundle 默认壁纸后的标记。
+- `providerSettings`：provider 名称、余额请求设置、刷新间隔和最后成功余额。
+- `weatherCity`：天气 API 城市；`DashboardLayout.runtimeTitleSpacing` / `runtimeIcons`：Runtime 标题间距和图标设置。
 
 `DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417 底部 y 值会迁移到 420；自定义的其他坐标保持不变。
 

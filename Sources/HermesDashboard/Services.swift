@@ -85,8 +85,13 @@ final class SystemWeatherService {
     private let queue = DispatchQueue(label: "hermes-dashboard.weather", qos: .utility)
     private let fileManager = FileManager.default
 
-    func fetch(completion: @escaping (WeatherSnapshot) -> Void) {
+    func fetch(city: String = "", completion: @escaping (WeatherSnapshot) -> Void) {
         queue.async {
+            if !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let live = self.fetchFromWttr(city: city) {
+                DispatchQueue.main.async { completion(live) }
+                return
+            }
             if let cached = self.readWeatherCache() {
                 DispatchQueue.main.async { completion(cached) }
                 return
@@ -96,6 +101,34 @@ final class SystemWeatherService {
             let parsed = self.parseWeatherText(bridgeOutput) ?? .demo
             DispatchQueue.main.async { completion(parsed) }
         }
+    }
+
+    private func fetchFromWttr(city: String) -> WeatherSnapshot? {
+        let encoded = city.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? city
+        guard let url = URL(string: "https://wttr.in/\(encoded)?format=j1") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4
+        request.setValue("HermesDashboard/1.0", forHTTPHeaderField: "User-Agent")
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: WeatherSnapshot?
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let data, (response as? HTTPURLResponse)?.statusCode == 200,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let current = (object["current_condition"] as? [[String: Any]])?.first else { return }
+            let temp = (current["temp_C"] as? String) ?? (current["temp_C"] as? NSNumber)?.stringValue ?? "--"
+            let description = ((current["weatherDesc"] as? [[String: Any]])?.first?["value"] as? String ?? "").lowercased()
+            let condition: WeatherCondition
+            if description.contains("snow") { condition = .snow }
+            else if description.contains("rain") || description.contains("drizzle") { condition = .rain }
+            else if description.contains("cloud") || description.contains("overcast") { condition = .partlyCloudy }
+            else if description.contains("clear") || description.contains("sun") { condition = .clear }
+            else { condition = .unknown }
+            result = WeatherSnapshot(temperature: "\(temp)°C", condition: condition, location: city, isLive: true)
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 5)
+        return result
     }
 
     private func readWeatherAppAccessibilityTree() -> String? {
@@ -211,6 +244,8 @@ private struct RuntimePayload: Decodable {
     var model: String?
     var thinking: String?
     var fastMode: Bool?
+    var fast: Bool?
+    var reasoningEffort: String?
     var provider: String?
     var balance: String?
     var tokenPercent: Double?
@@ -224,9 +259,31 @@ private struct RuntimePayload: Decodable {
     var sessions: [RuntimeSessionPayload]?
 
     enum CodingKeys: String, CodingKey {
-        case model, thinking, fastMode, provider, balance, tokenPercent, tokens
+        case model, thinking, fastMode, fast, fast_mode, reasoningEffort, reasoning_effort, provider, balance, balanceValue, balance_value, tokenPercent, tokens
         case activeSession, elapsed, contextPercent, contextUsedTokens, contextLimitTokens
         case agentState, sessions
+    }
+    var balanceValue: Double?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+        thinking = try c.decodeIfPresent(String.self, forKey: .thinking)
+        fastMode = try c.decodeIfPresent(Bool.self, forKey: .fastMode) ?? c.decodeIfPresent(Bool.self, forKey: .fast_mode)
+        fast = try c.decodeIfPresent(Bool.self, forKey: .fast)
+        reasoningEffort = try c.decodeIfPresent(String.self, forKey: .reasoningEffort) ?? c.decodeIfPresent(String.self, forKey: .reasoning_effort)
+        provider = try c.decodeIfPresent(String.self, forKey: .provider)
+        balance = try c.decodeIfPresent(String.self, forKey: .balance)
+        balanceValue = try c.decodeIfPresent(Double.self, forKey: .balanceValue) ?? c.decodeIfPresent(Double.self, forKey: .balance_value)
+        tokenPercent = try c.decodeIfPresent(Double.self, forKey: .tokenPercent)
+        tokens = try c.decodeIfPresent(Double.self, forKey: .tokens)
+        activeSession = try c.decodeIfPresent(String.self, forKey: .activeSession)
+        elapsed = try c.decodeIfPresent(String.self, forKey: .elapsed)
+        contextPercent = try c.decodeIfPresent(Double.self, forKey: .contextPercent)
+        contextUsedTokens = try c.decodeIfPresent(Double.self, forKey: .contextUsedTokens)
+        contextLimitTokens = try c.decodeIfPresent(Double.self, forKey: .contextLimitTokens)
+        agentState = try c.decodeIfPresent(String.self, forKey: .agentState)
+        sessions = try c.decodeIfPresent([RuntimeSessionPayload].self, forKey: .sessions)
     }
 }
 
@@ -253,23 +310,27 @@ private struct CodexSnapshot {
     var sessions: [SessionInfo]
     var agentState: AgentState
     var contextPercent: Int
+    var model: String?
+    var thinking: String?
+    var fastMode: Bool?
+    var provider: String?
 }
 
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
 
-    func fetch(source: RuntimeSource, completion: @escaping (RuntimeStatus) -> Void) {
+    func fetch(source: RuntimeSource, provider: ProviderSettings, completion: @escaping (RuntimeStatus) -> Void) {
         queue.async {
-            let status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
+            let status = self.read(source: source, provider: provider) ?? RuntimeStatus.demo(source: source)
             DispatchQueue.main.async { completion(status) }
         }
     }
 
-    private func read(source: RuntimeSource) -> RuntimeStatus? {
+    private func read(source: RuntimeSource, provider: ProviderSettings) -> RuntimeStatus? {
         let codexSnapshot = source == .codex ? readCodexSnapshot() : nil
         for url in candidateURLs(for: source) {
             guard let data = try? Data(contentsOf: url), let payload = try? JSONDecoder().decode(RuntimePayload.self, from: data) else { continue }
-            return map(payload, source: source, codexSnapshot: codexSnapshot)
+            return map(payload, source: source, provider: provider, codexSnapshot: codexSnapshot)
         }
         if source == .codex, let codexSnapshot {
             var status = RuntimeStatus.demo(source: source)
@@ -278,6 +339,13 @@ final class RuntimeStatusService {
             status.tokenPercent = codexSnapshot.contextPercent
             status.agentState = codexSnapshot.agentState
             status.sessions = codexSnapshot.sessions
+            if let model = codexSnapshot.model { status.model = model }
+            if let thinking = codexSnapshot.thinking { status.thinking = thinking.uppercased() }
+            if let fastMode = codexSnapshot.fastMode { status.fastMode = fastMode }
+            if let sourceProvider = codexSnapshot.provider { status.provider = sourceProvider.uppercased() }
+            if !provider.name.isEmpty { status.provider = provider.name.uppercased() }
+            status.balance = provider.lastBalance
+            status.balanceValue = provider.lastBalanceValue
             status.isLive = true
             return status
         }
@@ -311,7 +379,7 @@ final class RuntimeStatusService {
 
         let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC LIMIT 5;")
         if !catalogRows.isEmpty {
-            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used FROM threads WHERE archived = 0;")
+            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads WHERE archived = 0;")
             let states = Dictionary(uniqueKeysWithValues: stateRows.compactMap { row -> (String, [String: Any])? in
                 guard let id = row["id"] as? String else { return nil }
                 return (id, row)
@@ -348,13 +416,63 @@ final class RuntimeStatusService {
                 } else {
                     agentState = .idle
                 }
-                return CodexSnapshot(sessions: sessions, agentState: agentState, contextPercent: sessions[0].contextPercent)
+                let currentThreadID = catalogRows.first?["thread_id"] as? String
+                let currentState = currentThreadID.flatMap { states[$0] }
+                let metadata = readCodexRuntimeMetadata(state: currentState)
+                return CodexSnapshot(
+                    sessions: sessions,
+                    agentState: agentState,
+                    contextPercent: sessions[0].contextPercent,
+                    model: metadata.model,
+                    thinking: metadata.thinking,
+                    fastMode: metadata.fastMode,
+                    provider: metadata.provider
+                )
             }
         }
 
         let legacySessions = readLegacyCodexTasks()
         guard !legacySessions.isEmpty else { return nil }
-        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent)
+        let metadata = readCodexRuntimeMetadata(state: nil)
+        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider)
+    }
+
+    private func readCodexRuntimeMetadata(state: [String: Any]?) -> (model: String?, thinking: String?, fastMode: Bool?, provider: String?) {
+        let configURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
+        let config = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let configuredModel = state?["model"] as? String ?? valueAfterTOMLKey("model", in: config)
+        let configuredThinking = state?["reasoning_effort"] as? String ?? valueAfterTOMLKey("model_reasoning_effort", in: config)
+        let configuredProvider = state?["model_provider"] as? String ?? valueAfterTOMLKey("model_provider", in: config)
+        let rolloutFast = (state?["rollout_path"] as? String).flatMap(readFastFlagFromRollout)
+        let fast = (state?["fast_mode"] as? NSNumber)?.boolValue
+            ?? (state?["fast"] as? NSNumber)?.boolValue
+            ?? rolloutFast
+            ?? valueAfterTOMLKey("fast_mode", in: config).map { ["true", "1", "on", "yes"].contains($0.lowercased()) }
+            ?? ((valueAfterTOMLKey("service_tier", in: config)?.lowercased() == "priority") ? true : false)
+        return (configuredModel, configuredThinking, fast, configuredProvider)
+    }
+
+    private func readFastFlagFromRollout(_ path: String) -> Bool? {
+        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else { return nil }
+        defer { try? handle.close() }
+        let end = (try? handle.seekToEnd()) ?? 0
+        handle.seek(toFileOffset: end > 262_144 ? end - 262_144 : 0)
+        guard let data = try? handle.readToEnd(), let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline).reversed() {
+            let lower = line.lowercased()
+            if lower.contains("\"fast_mode\":true") || lower.contains("\"fast\":true") { return true }
+            if lower.contains("\"fast_mode\":false") || lower.contains("\"fast\":false") { return false }
+        }
+        return nil
+    }
+
+    private func valueAfterTOMLKey(_ key: String, in text: String) -> String? {
+        for line in text.split(whereSeparator: \.isNewline) {
+            let raw = line.trimmingCharacters(in: .whitespaces)
+            guard raw.hasPrefix("\(key)"), let equals = raw.firstIndex(of: "=") else { continue }
+            return raw[raw.index(after: equals)...].trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        }
+        return nil
     }
 
     private func readLegacyCodexTasks() -> [SessionInfo] {
@@ -450,7 +568,7 @@ final class RuntimeStatusService {
         }
     }
 
-    private func map(_ payload: RuntimePayload, source: RuntimeSource, codexSnapshot: CodexSnapshot?) -> RuntimeStatus {
+    private func map(_ payload: RuntimePayload, source: RuntimeSource, provider: ProviderSettings, codexSnapshot: CodexSnapshot?) -> RuntimeStatus {
         let demo = RuntimeStatus.demo(source: source)
         let calculatedContext: Int
         if let snapshot = codexSnapshot {
@@ -476,11 +594,12 @@ final class RuntimeStatusService {
 
         return RuntimeStatus(
             source: source,
-            model: payload.model ?? demo.model,
-            thinking: (payload.thinking ?? demo.thinking).uppercased(),
-            fastMode: payload.fastMode ?? demo.fastMode,
-            provider: (payload.provider ?? demo.provider).uppercased(),
-            balance: payload.balance ?? demo.balance,
+            model: codexSnapshot?.model ?? payload.model ?? demo.model,
+            thinking: (codexSnapshot?.thinking ?? payload.thinking ?? payload.reasoningEffort ?? demo.thinking).uppercased(),
+            fastMode: codexSnapshot?.fastMode ?? payload.fastMode ?? payload.fast ?? demo.fastMode,
+            provider: (provider.name.isEmpty ? (codexSnapshot?.provider ?? payload.provider ?? demo.provider) : provider.name).uppercased(),
+            balance: provider.lastBalance.isEmpty ? (payload.balance ?? demo.balance) : provider.lastBalance,
+            balanceValue: provider.lastBalanceValue ?? payload.balanceValue,
             tokenPercent: codexSnapshot?.contextPercent ?? clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
             activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
@@ -493,6 +612,90 @@ final class RuntimeStatusService {
 
     private func clamp(_ value: Int, min: Int, max: Int) -> Int {
         Swift.min(Swift.max(value, min), max)
+    }
+}
+
+struct BalanceSnapshot {
+    var display: String
+    var numeric: Double?
+}
+
+final class ProviderBalanceService {
+    private let queue = DispatchQueue(label: "hermes-dashboard.balance", qos: .utility)
+
+    func fetch(settings: ProviderSettings, completion: @escaping (BalanceSnapshot?) -> Void) {
+        guard !settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !settings.balancePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !apiKey.isEmpty else {
+            completion(nil)
+            return
+        }
+        queue.async {
+            let result = self.read(settings: settings, apiKey: apiKey)
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    private func read(settings: ProviderSettings, apiKey: String) -> BalanceSnapshot? {
+        let base = settings.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let path = settings.balancePath.hasPrefix("/") ? settings.balancePath : "/\(settings.balancePath)"
+        guard let url = URL(string: base + path) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: BalanceSnapshot?
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let data, (response as? HTTPURLResponse)?.statusCode ?? 0 >= 200,
+                  (response as? HTTPURLResponse)?.statusCode ?? 0 < 300,
+                  let object = try? JSONSerialization.jsonObject(with: data) else { return }
+            let value = self.value(at: settings.balanceJSONPath, in: object) ?? object
+            result = self.snapshot(for: value)
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 10)
+        return result
+    }
+
+    private func value(at path: String, in object: Any) -> Any? {
+        var current: Any = object
+        for component in path.split(separator: ".").map(String.init) where !component.isEmpty {
+            if let dictionary = current as? [String: Any] {
+                guard let next = dictionary[component] else { return nil }
+                current = next
+            } else if let array = current as? [Any], let index = Int(component), array.indices.contains(index) {
+                current = array[index]
+            } else { return nil }
+        }
+        return current
+    }
+
+    private func snapshot(for value: Any) -> BalanceSnapshot? {
+        if let number = value as? NSNumber {
+            return BalanceSnapshot(display: format(number.doubleValue), numeric: number.doubleValue)
+        }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            let numeric = numericValue(in: trimmed)
+            return trimmed.isEmpty ? nil : BalanceSnapshot(display: trimmed, numeric: numeric)
+        }
+        return nil
+    }
+
+    private func numericValue(in string: String) -> Double? {
+        let pattern = #"[-+]?\d+(?:\.\d+)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: string, range: NSRange(string.startIndex..<string.endIndex, in: string)),
+              let range = Range(match.range, in: string) else { return nil }
+        return Double(string[range])
+    }
+
+    private func format(_ value: Double) -> String {
+        if value.rounded() == value { return String(format: "%.0f", value) }
+        return String(format: "%.2f", value)
     }
 }
 

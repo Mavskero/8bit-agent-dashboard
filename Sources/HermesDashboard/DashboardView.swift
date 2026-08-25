@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import ImageIO
 
 final class SettingsButton: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -217,41 +218,70 @@ final class DashboardView: NSView {
         let sourceWidth = PixelPainter.textWidth(sourceLabel, style: runtimeStyle)
         drawText(sourceLabel, key: .runtime, at: CGPoint(x: origin.x + 438 - sourceWidth, y: origin.y + 26), context: context, style: runtimeStyle)
 
-        let rows: [(String, String, NSColor, Int)] = [
-            ("MODEL", model.runtime.model, PixelPalette.cyan, 0),
-            ("THINKING", model.runtime.thinking, PixelPalette.violet, 1),
-            ("FASTMODE", model.runtime.fastMode ? "ON" : "OFF", PixelPalette.cyan, 2),
-            ("PROVIDER", model.runtime.provider, PixelPalette.cyan, 3),
-            ("BALANCE", model.runtime.balance, PixelPalette.green, 4),
-            ("TOKENS", "\(model.runtime.tokenPercent)%", PixelPalette.cyan, 5)
+        let rows: [(RuntimeIconKey, String, String, NSColor)] = [
+            (.model, "MODEL", model.runtime.model, PixelPalette.cyan),
+            (.thinking, "THINKING", model.runtime.thinking, thinkingColor(model.runtime.thinking)),
+            (.fastMode, "FASTMODE", model.runtime.fastMode ? "ON" : "OFF", PixelPalette.cyan),
+            (.provider, "PROVIDER", model.runtime.provider, PixelPalette.cyan),
+            (.balance, "BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
+            (.tokens, "TOKENS", "\(model.runtime.tokenPercent)%", PixelPalette.cyan)
         ]
 
         for (index, row) in rows.enumerated() {
-            let rowY = origin.y + 62 + CGFloat(index) * 35
-            PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + 28, y: rowY + 5), kind: row.3, color: row.2, context: context)
+            let rowY = origin.y + 22 + runtimeStyle.pointSize + model.layout.runtimeTitleSpacing + CGFloat(index) * 35
+            let icon = model.layout.runtimeIcons[row.0.rawValue] ?? DashboardLayout.defaultRuntimeIcons[row.0.rawValue]!
+            if let custom = runtimeIconImage(style: icon) {
+                PixelPainter.drawAsset(custom, in: CGRect(x: origin.x + icon.x, y: rowY + icon.y, width: 24, height: 24), context: context)
+            } else {
+                PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + icon.x, y: rowY + icon.y), kind: icon.pattern, color: row.3, context: context)
+            }
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
-            drawText(row.0, key: .runtime, at: CGPoint(x: origin.x + 80, y: rowY + 4), context: context, style: rowStyle)
+            drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 80, y: rowY + 4), context: context, style: rowStyle)
             PixelPalette.border.setFill()
-            let labelEnd = origin.x + 80 + PixelPainter.textWidth(row.0, style: rowStyle)
+            let labelEnd = origin.x + 80 + PixelPainter.textWidth(row.1, style: rowStyle)
             for dot in stride(from: Int(labelEnd + 16), to: Int(origin.x + 350), by: 10) {
                 context.fill(CGRect(x: CGFloat(dot), y: rowY + 19, width: 3, height: 2))
             }
-            if row.0 == "FASTMODE" {
+            if row.0 == .fastMode {
                 var fastStyle = rowStyle
-                fastStyle.colorHex = (row.1 == "ON" ? PixelPalette.cyan : PixelPalette.orange).hexString
-                drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 360, y: rowY + 4), context: context, style: fastStyle)
+                fastStyle.colorHex = (row.2 == "ON" ? PixelPalette.cyan : PixelPalette.orange).hexString
+                drawText(row.2, key: .runtime, at: CGPoint(x: origin.x + 360, y: rowY + 4), context: context, style: fastStyle)
                 PixelPalette.cyan.setFill()
                 context.fill(CGRect(x: origin.x + 418, y: rowY + 5, width: 42, height: 25))
                 PixelPalette.navy.setFill()
-                context.fill(CGRect(x: origin.x + (row.1 == "ON" ? 438 : 422), y: rowY + 9, width: 17, height: 17))
+                context.fill(CGRect(x: origin.x + (row.2 == "ON" ? 438 : 422), y: rowY + 9, width: 17, height: 17))
             } else {
                 var valueStyle = rowStyle
-                valueStyle.colorHex = (row.2 == PixelPalette.cyan ? PixelPalette.cyan : (row.0 == "THINKING" ? PixelPalette.orange : row.2)).hexString
-                let valueWidth = PixelPainter.textWidth(row.1, style: valueStyle)
-                drawText(row.1, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
+                valueStyle.colorHex = row.3.hexString
+                let valueWidth = PixelPainter.textWidth(row.2, style: valueStyle)
+                drawText(row.2, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
             }
         }
+    }
+
+    private func thinkingColor(_ value: String) -> NSColor {
+        switch value.lowercased() {
+        case "low", "minimal": return PixelPalette.green
+        case "medium", "med": return PixelPalette.yellow
+        case "high": return PixelPalette.orange
+        case "xhigh", "ultra", "max": return PixelPalette.violet
+        default: return PixelPalette.cyan
+        }
+    }
+
+    private func balanceColor(_ value: Double?) -> NSColor {
+        guard let value else { return PixelPalette.orange }
+        if value >= 10 { return PixelPalette.green }
+        if value >= 5 { return PixelPalette.yellow }
+        return PixelPalette.red
+    }
+
+    private func runtimeIconImage(style: RuntimeIconStyle) -> CGImage? {
+        guard style.name.hasPrefix("file:") else { return nil }
+        let url = URL(fileURLWithPath: String(style.name.dropFirst(5)))
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
     private func drawBottomArea(context: CGContext) {

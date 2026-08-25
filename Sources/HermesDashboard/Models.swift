@@ -206,6 +206,39 @@ struct DashboardModulePosition: Codable, Equatable {
     var y: CGFloat
 }
 
+enum RuntimeIconKey: String, CaseIterable, Codable {
+    case model, thinking, fastMode, provider, balance, tokens
+
+    var displayName: String {
+        switch self {
+        case .model: return "MODEL"
+        case .thinking: return "THINKING"
+        case .fastMode: return "FASTMODE"
+        case .provider: return "PROVIDER"
+        case .balance: return "BALANCE"
+        case .tokens: return "TOKENS"
+        }
+    }
+}
+
+struct RuntimeIconStyle: Codable, Equatable {
+    /// Built-in pixel patterns are named pattern-0 through pattern-5.
+    var name: String
+    var x: CGFloat
+    var y: CGFloat
+
+    init(name: String, x: CGFloat = 28, y: CGFloat = 5) {
+        self.name = name
+        self.x = x
+        self.y = y
+    }
+
+    var pattern: Int {
+        guard name.hasPrefix("pattern-"), let value = Int(name.dropFirst("pattern-".count)) else { return 0 }
+        return min(max(value, 0), 5)
+    }
+}
+
 struct DashboardLayout: Codable, Equatable {
     var padding: CGFloat
     var runtimeStatus: DashboardModulePosition
@@ -215,10 +248,13 @@ struct DashboardLayout: Codable, Equatable {
     var agentOpacity: CGFloat
     var activeSessionOpacity: CGFloat
     var sessionCardOpacity: CGFloat
+    var runtimeTitleSpacing: CGFloat
+    var runtimeIcons: [String: RuntimeIconStyle]
 
     private enum CodingKeys: String, CodingKey {
         case padding, runtimeStatus, hermesAgent, activeSession
         case runtimeOpacity, agentOpacity, activeSessionOpacity, sessionCardOpacity
+        case runtimeTitleSpacing, runtimeIcons
     }
 
     init(
@@ -229,7 +265,9 @@ struct DashboardLayout: Codable, Equatable {
         runtimeOpacity: CGFloat,
         agentOpacity: CGFloat,
         activeSessionOpacity: CGFloat,
-        sessionCardOpacity: CGFloat = 0.82
+        sessionCardOpacity: CGFloat = 0.82,
+        runtimeTitleSpacing: CGFloat = 18,
+        runtimeIcons: [String: RuntimeIconStyle] = DashboardLayout.defaultRuntimeIcons
     ) {
         self.padding = padding
         self.runtimeStatus = runtimeStatus
@@ -239,6 +277,8 @@ struct DashboardLayout: Codable, Equatable {
         self.agentOpacity = agentOpacity
         self.activeSessionOpacity = activeSessionOpacity
         self.sessionCardOpacity = sessionCardOpacity
+        self.runtimeTitleSpacing = runtimeTitleSpacing
+        self.runtimeIcons = runtimeIcons
     }
 
     init(from decoder: Decoder) throws {
@@ -251,7 +291,21 @@ struct DashboardLayout: Codable, Equatable {
         agentOpacity = try container.decode(CGFloat.self, forKey: .agentOpacity)
         activeSessionOpacity = try container.decode(CGFloat.self, forKey: .activeSessionOpacity)
         sessionCardOpacity = try container.decodeIfPresent(CGFloat.self, forKey: .sessionCardOpacity) ?? 0.82
+        runtimeTitleSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .runtimeTitleSpacing) ?? 18
+        runtimeIcons = try container.decodeIfPresent([String: RuntimeIconStyle].self, forKey: .runtimeIcons) ?? DashboardLayout.defaultRuntimeIcons
+        for key in RuntimeIconKey.allCases where runtimeIcons[key.rawValue] == nil {
+            runtimeIcons[key.rawValue] = DashboardLayout.defaultRuntimeIcons[key.rawValue]
+        }
     }
+
+    static let defaultRuntimeIcons: [String: RuntimeIconStyle] = [
+        RuntimeIconKey.model.rawValue: RuntimeIconStyle(name: "pattern-0"),
+        RuntimeIconKey.thinking.rawValue: RuntimeIconStyle(name: "pattern-1"),
+        RuntimeIconKey.fastMode.rawValue: RuntimeIconStyle(name: "pattern-2"),
+        RuntimeIconKey.provider.rawValue: RuntimeIconStyle(name: "pattern-3"),
+        RuntimeIconKey.balance.rawValue: RuntimeIconStyle(name: "pattern-4"),
+        RuntimeIconKey.tokens.rawValue: RuntimeIconStyle(name: "pattern-5")
+    ]
 
     static let defaults = DashboardLayout(
         padding: 12,
@@ -261,7 +315,9 @@ struct DashboardLayout: Codable, Equatable {
         runtimeOpacity: 0.2,
         agentOpacity: 0.2,
         activeSessionOpacity: 0.2,
-        sessionCardOpacity: 0.0
+        sessionCardOpacity: 0.0,
+        runtimeTitleSpacing: 18,
+        runtimeIcons: DashboardLayout.defaultRuntimeIcons
     )
 
     static func load() -> DashboardLayout {
@@ -312,6 +368,37 @@ enum RuntimeSource: String, CaseIterable {
         case .codex: return "Codex Desktop"
         case .hermes: return "Hermes Agent"
         }
+    }
+}
+
+struct ProviderSettings: Codable, Equatable {
+    var name: String
+    var baseURL: String
+    var balancePath: String
+    var balanceJSONPath: String
+    var refreshInterval: TimeInterval
+    var lastBalance: String
+    var lastBalanceValue: Double?
+
+    static let defaults = ProviderSettings(
+        name: "OPENAI",
+        baseURL: "https://api.openai.com/v1",
+        balancePath: "/dashboard/billing/credit_grants",
+        balanceJSONPath: "total_available",
+        refreshInterval: 300,
+        lastBalance: "$18.42",
+        lastBalanceValue: 18.42
+    )
+
+    static func load() -> ProviderSettings {
+        guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
+              let value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
+        return value
+    }
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: "providerSettings")
     }
 }
 
@@ -399,6 +486,7 @@ struct RuntimeStatus {
     var fastMode: Bool
     var provider: String
     var balance: String
+    var balanceValue: Double?
     var tokenPercent: Int
     var activeSession: String
     var elapsed: String
@@ -415,6 +503,7 @@ struct RuntimeStatus {
             fastMode: true,
             provider: "OPENAI",
             balance: "$18.42",
+            balanceValue: 18.42,
             tokenPercent: 72,
             activeSession: "Refactor telemetry pipeline",
             elapsed: "08:41",
@@ -440,6 +529,8 @@ final class DashboardModel: NSObject {
     private(set) var assetFolderPath: String?
     private(set) var styles: DashboardStyles
     private(set) var layout: DashboardLayout
+    private(set) var providerSettings: ProviderSettings
+    private(set) var weatherCity: String
     private(set) var assetStore: DashboardAssetStore
     var onChange: (() -> Void)?
 
@@ -455,6 +546,7 @@ final class DashboardModel: NSObject {
         static let wallpaperPath = "wallpaperPath"
         static let wallpaperCleared = "wallpaperCleared"
         static let assetFolderPath = "assetFolderPath"
+        static let weatherCity = "weatherCity"
     }
 
     private static var bundledWallpaperPath: String? {
@@ -464,7 +556,9 @@ final class DashboardModel: NSObject {
     private let weatherService = SystemWeatherService()
     private let musicService = AppleMusicService()
     private let runtimeService = RuntimeStatusService()
+    private let balanceService = ProviderBalanceService()
     private var refreshTimer: Timer?
+    private var balanceTimer: Timer?
 
     override init() {
         let storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
@@ -481,12 +575,16 @@ final class DashboardModel: NSObject {
         assetFolderPath = UserDefaults.standard.string(forKey: Keys.assetFolderPath)
         styles = DashboardStyles.load()
         layout = DashboardLayout.load()
+        providerSettings = ProviderSettings.load()
+        weatherCity = UserDefaults.standard.string(forKey: Keys.weatherCity) ?? ""
         assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)))
         super.init()
     }
 
     func start() {
         refreshAll()
+        refreshBalance()
+        scheduleBalanceTimer()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshDynamicData()
         }
@@ -495,6 +593,8 @@ final class DashboardModel: NSObject {
     func stop() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        balanceTimer?.invalidate()
+        balanceTimer = nil
     }
 
     func setWallpaper(url: URL?) {
@@ -538,6 +638,27 @@ final class DashboardModel: NSObject {
         notifyChange()
     }
 
+    func updateProviderSettings(_ settings: ProviderSettings) {
+        providerSettings = settings
+        providerSettings.refreshInterval = min(max(settings.refreshInterval, 30), 86_400)
+        providerSettings.save()
+        var updated = runtime
+        updated.provider = providerSettings.name.isEmpty ? updated.provider : providerSettings.name.uppercased()
+        updated.balance = providerSettings.lastBalance
+        updated.balanceValue = providerSettings.lastBalanceValue
+        runtime = updated
+        scheduleBalanceTimer()
+        refreshBalance()
+        notifyChange()
+    }
+
+    func updateWeatherCity(_ city: String) {
+        weatherCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        if weatherCity.isEmpty { UserDefaults.standard.removeObject(forKey: Keys.weatherCity) }
+        else { UserDefaults.standard.set(weatherCity, forKey: Keys.weatherCity) }
+        refreshWeather()
+    }
+
     func refreshAll() {
         refreshWeather()
         refreshMusic()
@@ -550,7 +671,7 @@ final class DashboardModel: NSObject {
     }
 
     private func refreshWeather() {
-        weatherService.fetch { [weak self] snapshot in
+        weatherService.fetch(city: weatherCity) { [weak self] snapshot in
             guard let self else { return }
             self.weather = snapshot
             self.notifyChange()
@@ -567,9 +688,34 @@ final class DashboardModel: NSObject {
 
     fileprivate func refreshRuntime() {
         let source = runtimeSource
-        runtimeService.fetch(source: source) { [weak self] status in
+        runtimeService.fetch(source: source, provider: providerSettings) { [weak self] status in
             guard let self else { return }
             self.runtime = status
+            self.notifyChange()
+        }
+    }
+
+    private func scheduleBalanceTimer() {
+        balanceTimer?.invalidate()
+        balanceTimer = Timer.scheduledTimer(withTimeInterval: providerSettings.refreshInterval, repeats: true) { [weak self] _ in
+            self?.refreshBalance()
+        }
+    }
+
+    private func refreshBalance() {
+        let settings = providerSettings
+        balanceService.fetch(settings: settings) { [weak self] value in
+            guard let self, let value else { return }
+            var updatedSettings = self.providerSettings
+            updatedSettings.lastBalance = value.display
+            updatedSettings.lastBalanceValue = value.numeric
+            self.providerSettings = updatedSettings
+            updatedSettings.save()
+            var updatedRuntime = self.runtime
+            updatedRuntime.provider = updatedSettings.name.isEmpty ? updatedRuntime.provider : updatedSettings.name.uppercased()
+            updatedRuntime.balance = value.display
+            updatedRuntime.balanceValue = value.numeric
+            self.runtime = updatedRuntime
             self.notifyChange()
         }
     }

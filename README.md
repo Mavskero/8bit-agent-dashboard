@@ -27,6 +27,8 @@ open build/HermesDashboard.app
 - 字号
 - 颜色
 
+设置中的 `Import Font…` 可以注册本地 `.ttf`、`.otf` 或 `.ttc` 字体，并立即加入所有文字样式的字体列表。
+
 修改后即时生效并保存到应用偏好设置；`Reset Text Styles` 恢复预览图默认样式。
 
 点击 `Layout / Opacity…` 可以修改整个画布的上下左右 padding、Runtime Status / Hermes Agent / Active Session 三个模块的 X/Y 坐标，以及三个模块背景透明度。修改会立即生效并保存到下次启动。
@@ -45,6 +47,12 @@ hermes-done.png         hermes-error.png
 也可以放入 `weather/`、`hermes/`、`agent/` 或 `icons/` 子目录。Agent 会优先按当前状态寻找 `hermes-working`、`hermes-thinking`、`hermes-done` 等文件，GIF 会按原始帧时长播放；找不到时自动回退到内置像素图标。
 
 ## Runtime Status 数据
+
+Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、provider、余额和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；外部状态 JSON 也支持 `model`、`thinking` / `reasoningEffort`、`fast` / `fastMode`、`provider`、`balance` 字段。thinking 与余额会按强度/金额使用不同颜色。
+
+主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。请求使用环境变量 `OPENAI_API_KEY`，启动时立即获取一次，之后按间隔刷新；请求失败时保留上次成功读数。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距。
+
+`WEATHER CITY` 可指定 `wttr.in` 查询城市；留空时继续使用 macOS Weather 缓存/降级数据。
 
 设置窗口可以切换 Codex Desktop 和 Hermes Agent。程序会按下面的顺序查找状态文件：
 

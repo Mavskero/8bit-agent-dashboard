@@ -12,6 +12,7 @@ enum PixelPalette {
     static let cyanDim = NSColor(calibratedRed: 0.12, green: 0.42, blue: 0.52, alpha: 1)
     static let cream = NSColor(calibratedRed: 0.94, green: 0.87, blue: 0.72, alpha: 1)
     static let orange = NSColor(calibratedRed: 0.93, green: 0.38, blue: 0.18, alpha: 1)
+    static let yellow = NSColor(calibratedRed: 0.96, green: 0.76, blue: 0.18, alpha: 1)
     static let red = NSColor(calibratedRed: 0.92, green: 0.22, blue: 0.25, alpha: 1)
     static let green = NSColor(calibratedRed: 0.46, green: 0.75, blue: 0.28, alpha: 1)
     static let violet = NSColor(calibratedRed: 0.48, green: 0.40, blue: 0.78, alpha: 1)

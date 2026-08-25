@@ -11,9 +11,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let wallpaperLabel = NSTextField(labelWithString: "No GIF selected")
     private let assetFolderLabel = NSTextField(labelWithString: "Use built-in pixel icons")
     private let statusPathLabel = NSTextField(labelWithString: "")
+    private let weatherCityField = NSTextField(string: "")
     private var styleRows: [DashboardStyleKey: StyleRow] = [:]
     private var availableScreens: [NSScreen] = []
     private var layoutController: LayoutSettingsWindowController?
+    private var providerController: ProviderSettingsWindowController?
 
     init(model: DashboardModel, parentWindow: NSWindow?, onDisplayChanged: @escaping (NSScreen) -> Void) {
         self.model = model
@@ -25,7 +27,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
-        window.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1)
+        window.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        window.appearance = NSAppearance(named: .aqua)
         window.minSize = NSSize(width: 760, height: 620)
         super.init(window: window)
         window.delegate = self
@@ -57,11 +60,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let content = window?.contentView else { return }
         content.wantsLayer = true
-        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
 
         let title = NSTextField(labelWithString: "DASHBOARD CONTROL")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
-        title.textColor = PixelPalette.cyan
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
         title.frame = NSRect(x: 28, y: 674, width: 750, height: 26)
         content.addSubview(title)
 
@@ -74,6 +77,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         sourcePopup.target = self
         sourcePopup.action = #selector(sourceChanged(_:))
         content.addSubview(sourcePopup)
+        addButton("Provider Settings…", x: 590, y: 622, width: 140, action: #selector(showProviderSettings(_:)), to: content)
 
         let displayLabel = makeLabel("DEFAULT DISPLAY")
         displayLabel.frame = NSRect(x: 28, y: 584, width: 240, height: 20)
@@ -84,11 +88,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         content.addSubview(displayPopup)
         reloadDisplays()
 
+        let weatherCityLabel = makeLabel("WEATHER CITY")
+        weatherCityLabel.frame = NSRect(x: 650, y: 606, width: 130, height: 18)
+        content.addSubview(weatherCityLabel)
+        weatherCityField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        weatherCityField.placeholderString = "Auto / city"
+        weatherCityField.stringValue = model.weatherCity
+        weatherCityField.frame = NSRect(x: 650, y: 578, width: 140, height: 26)
+        weatherCityField.target = self
+        weatherCityField.action = #selector(weatherCityChanged(_:))
+        content.addSubview(weatherCityField)
+
         let wallpaperTitle = makeLabel("GIF WALLPAPER")
         wallpaperTitle.frame = NSRect(x: 28, y: 540, width: 240, height: 20)
         content.addSubview(wallpaperTitle)
         wallpaperLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        wallpaperLabel.textColor = PixelPalette.cream
+        wallpaperLabel.textColor = NSColor.labelColor
         wallpaperLabel.lineBreakMode = .byTruncatingMiddle
         wallpaperLabel.stringValue = model.wallpaperPath ?? "No GIF selected"
         wallpaperLabel.frame = NSRect(x: 280, y: 540, width: 350, height: 20)
@@ -100,7 +115,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         assetTitle.frame = NSRect(x: 28, y: 496, width: 240, height: 20)
         content.addSubview(assetTitle)
         assetFolderLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        assetFolderLabel.textColor = PixelPalette.cream
+        assetFolderLabel.textColor = NSColor.labelColor
         assetFolderLabel.lineBreakMode = .byTruncatingMiddle
         assetFolderLabel.stringValue = model.assetFolderPath ?? "Use built-in pixel icons"
         assetFolderLabel.frame = NSRect(x: 280, y: 496, width: 350, height: 20)
@@ -139,16 +154,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scroll.borderType = .bezelBorder
         content.addSubview(scroll)
 
-        addButton("Load Font…", x: 28, y: 44, width: 100, action: #selector(loadFont(_:)), to: content)
+        addButton("Import Font…", x: 28, y: 44, width: 104, action: #selector(loadFont(_:)), to: content)
         addButton("Reset Text Styles", x: 140, y: 44, width: 130, action: #selector(resetStyles(_:)), to: content)
-        let note = NSTextField(wrappingLabelWithString: "Styles are saved immediately. Built-in Pixel Grid keeps the original 8-bit look; Load Font… registers a local .ttf/.otf/.ttc font for the popups.")
+        let note = NSTextField(wrappingLabelWithString: "Styles are saved immediately. Import Font… registers local .ttf/.otf/.ttc files for the font popups.")
         note.font = NSFont.systemFont(ofSize: 10)
         note.textColor = NSColor.secondaryLabelColor
         note.frame = NSRect(x: 290, y: 42, width: 480, height: 28)
         content.addSubview(note)
 
         statusPathLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
-        statusPathLabel.textColor = PixelPalette.cyanDim
+        statusPathLabel.textColor = NSColor.secondaryLabelColor
         statusPathLabel.frame = NSRect(x: 28, y: 18, width: 750, height: 18)
         content.addSubview(statusPathLabel)
         updateStatusPathLabel()
@@ -157,7 +172,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func makeLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
-        label.textColor = PixelPalette.cream
+        label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
         return label
     }
 
@@ -173,6 +188,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             layoutController = LayoutSettingsWindowController(model: model, parentWindow: window)
         }
         layoutController?.showWindow(nil)
+    }
+
+    @objc private func showProviderSettings(_ sender: NSButton) {
+        if providerController == nil { providerController = ProviderSettingsWindowController(model: model, parentWindow: window) }
+        providerController?.showWindow(nil)
+    }
+
+    @objc private func weatherCityChanged(_ sender: NSTextField) {
+        model.updateWeatherCity(sender.stringValue)
     }
 
     @objc private func sourceChanged(_ sender: NSPopUpButton) {
@@ -313,7 +337,7 @@ private final class StyleRow: NSView {
         self.owner = owner
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 0.35).cgColor
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.90, alpha: 0.75).cgColor
         build(style: style)
     }
 
@@ -322,7 +346,7 @@ private final class StyleRow: NSView {
     private func build(style: TextStyle) {
         let label = NSTextField(labelWithString: key.displayName)
         label.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        label.textColor = PixelPalette.cream
+        label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
         label.frame = NSRect(x: 10, y: 10, width: 142, height: 18)
         addSubview(label)
 
@@ -404,6 +428,187 @@ private final class StyleRow: NSView {
     }
 }
 
+private final class ProviderSettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let model: DashboardModel
+    private weak var parentWindow: NSWindow?
+    private var fields: [String: NSTextField] = [:]
+
+    init(model: DashboardModel, parentWindow: NSWindow?) {
+        self.model = model
+        self.parentWindow = parentWindow
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.title = "Provider Settings"
+        panel.isFloatingPanel = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
+        super.init(window: panel)
+        panel.delegate = self
+        buildContent()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        window?.orderFrontRegardless()
+        window?.makeKey()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window else { return }
+        parentWindow?.removeChildWindow(window)
+        parentWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func buildContent() {
+        guard let content = window?.contentView else { return }
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
+        let title = label("PROVIDER / BALANCE", size: 18, bold: true)
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
+        title.frame = NSRect(x: 28, y: 316, width: 500, height: 26)
+        content.addSubview(title)
+        addField("Provider name", key: "name", value: model.providerSettings.name, y: 272, to: content)
+        addField("Base URL", key: "baseURL", value: model.providerSettings.baseURL, y: 232, to: content)
+        addField("Balance path", key: "balancePath", value: model.providerSettings.balancePath, y: 192, to: content)
+        addField("JSON field path", key: "balanceJSONPath", value: model.providerSettings.balanceJSONPath, y: 152, to: content)
+        addField("Refresh interval (sec)", key: "refreshInterval", value: String(Int(model.providerSettings.refreshInterval)), y: 112, to: content)
+        let note = NSTextField(wrappingLabelWithString: "API key is read from OPENAI_API_KEY. A failed request keeps the previous balance. The first request runs when the dashboard starts.")
+        note.font = NSFont.systemFont(ofSize: 11)
+        note.textColor = NSColor.secondaryLabelColor
+        note.frame = NSRect(x: 28, y: 58, width: 560, height: 38)
+        content.addSubview(note)
+        let save = NSButton(title: "Apply", target: self, action: #selector(apply(_:)))
+        save.bezelStyle = .rounded
+        save.frame = NSRect(x: 480, y: 18, width: 100, height: 28)
+        content.addSubview(save)
+    }
+
+    private func label(_ text: String, size: CGFloat, bold: Bool = false) -> NSTextField {
+        let value = NSTextField(labelWithString: text)
+        value.font = NSFont.monospacedSystemFont(ofSize: size, weight: bold ? .bold : .regular)
+        value.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
+        return value
+    }
+
+    private func addField(_ title: String, key: String, value: String, y: CGFloat, to view: NSView) {
+        let label = label(title, size: 11, bold: true)
+        label.frame = NSRect(x: 28, y: y + 4, width: 190, height: 18)
+        view.addSubview(label)
+        let field = NSTextField(string: value)
+        field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        field.frame = NSRect(x: 220, y: y, width: 360, height: 26)
+        view.addSubview(field)
+        fields[key] = field
+    }
+
+    @objc private func apply(_ sender: NSButton) {
+        var settings = model.providerSettings
+        settings.name = fields["name"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.name
+        settings.baseURL = fields["baseURL"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.baseURL
+        settings.balancePath = fields["balancePath"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.balancePath
+        settings.balanceJSONPath = fields["balanceJSONPath"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.balanceJSONPath
+        settings.refreshInterval = Double(fields["refreshInterval"]?.stringValue ?? "") ?? settings.refreshInterval
+        model.updateProviderSettings(settings)
+        window?.close()
+    }
+}
+
+private final class RuntimeIconSettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let model: DashboardModel
+    private weak var parentWindow: NSWindow?
+    private var rows: [(RuntimeIconKey, NSPopUpButton, NSTextField, NSTextField, NSTextField)] = []
+
+    init(model: DashboardModel, parentWindow: NSWindow?) {
+        self.model = model
+        self.parentWindow = parentWindow
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 330), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.title = "Runtime Status Icons"
+        panel.isFloatingPanel = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
+        super.init(window: panel)
+        panel.delegate = self
+        buildContent()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+        window?.orderFrontRegardless()
+        window?.makeKey()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window else { return }
+        parentWindow?.removeChildWindow(window)
+        parentWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func buildContent() {
+        guard let content = window?.contentView else { return }
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
+        let title = NSTextField(labelWithString: "RUNTIME STATUS ICONS")
+        title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
+        title.frame = NSRect(x: 28, y: 286, width: 500, height: 26)
+        content.addSubview(title)
+        for (index, key) in RuntimeIconKey.allCases.enumerated() {
+            let y = 242 - CGFloat(index) * 36
+            let label = NSTextField(labelWithString: key.displayName)
+            label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+            label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
+            label.frame = NSRect(x: 28, y: y + 4, width: 110, height: 18)
+            content.addSubview(label)
+            let popup = NSPopUpButton(frame: NSRect(x: 145, y: y, width: 150, height: 26), pullsDown: false)
+            popup.addItems(withTitles: (0..<6).map { "Pattern \($0 + 1)" } + ["Custom file"])
+            let current = model.layout.runtimeIcons[key.rawValue] ?? DashboardLayout.defaultRuntimeIcons[key.rawValue]!
+            popup.selectItem(at: current.name.hasPrefix("file:") ? 6 : current.pattern)
+            content.addSubview(popup)
+            let x = NSTextField(string: format(current.x))
+            x.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            x.frame = NSRect(x: 320, y: y, width: 70, height: 26)
+            content.addSubview(x)
+            let yField = NSTextField(string: format(current.y))
+            yField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            yField.frame = NSRect(x: 410, y: y, width: 70, height: 26)
+            content.addSubview(yField)
+            let path = NSTextField(string: current.name.hasPrefix("file:") ? String(current.name.dropFirst(5)) : "")
+            path.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+            path.placeholderString = "PNG/GIF path for Custom file"
+            path.frame = NSRect(x: 490, y: y, width: 115, height: 26)
+            content.addSubview(path)
+            rows.append((key, popup, x, yField, path))
+        }
+        let apply = NSButton(title: "Apply", target: self, action: #selector(apply(_:)))
+        apply.bezelStyle = .rounded
+        apply.frame = NSRect(x: 500, y: 18, width: 90, height: 28)
+        content.addSubview(apply)
+    }
+
+    @objc private func apply(_ sender: NSButton) {
+        var layout = model.layout
+        for (key, popup, x, y, path) in rows {
+            let name = popup.indexOfSelectedItem == 6 && !path.stringValue.isEmpty ? "file:\(path.stringValue)" : "pattern-\(popup.indexOfSelectedItem)"
+            layout.runtimeIcons[key.rawValue] = RuntimeIconStyle(name: name, x: CGFloat(Double(x.stringValue) ?? 28), y: CGFloat(Double(y.stringValue) ?? 5))
+        }
+        model.updateLayout(layout)
+        window?.close()
+    }
+
+    private func format(_ value: CGFloat) -> String {
+        String(format: "%.2f", Double(value)).replacingOccurrences(of: ".00", with: "")
+    }
+}
+
 private final class LayoutSettingsWindowController: NSWindowController, NSWindowDelegate {
     private enum FieldTag {
         static let padding = 1
@@ -417,11 +622,13 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         static let agentOpacity = 41
         static let sessionOpacity = 42
         static let sessionCardOpacity = 43
+        static let runtimeTitleSpacing = 44
     }
 
     private let model: DashboardModel
     private weak var parentWindow: NSWindow?
     private var fields: [Int: NSTextField] = [:]
+    private var runtimeIconController: RuntimeIconSettingsWindowController?
 
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
@@ -432,7 +639,8 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        panel.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1)
+        panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
         super.init(window: panel)
         panel.delegate = self
         buildContent()
@@ -463,11 +671,11 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
     private func buildContent() {
         guard let content = window?.contentView else { return }
         content.wantsLayer = true
-        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1).cgColor
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
 
         let title = NSTextField(labelWithString: "LAYOUT / MODULE OPACITY")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
-        title.textColor = PixelPalette.cyan
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
         title.frame = NSRect(x: 28, y: 460, width: 520, height: 26)
         content.addSubview(title)
 
@@ -487,17 +695,24 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         addLabel("SESSION CARDS", x: 28, y: 178, width: 120, to: content)
         addField(tag: FieldTag.sessionCardOpacity, value: model.layout.sessionCardOpacity, x: 160, y: 174, to: content)
 
+        addLabel("TITLE / CONTENT GAP", x: 28, y: 138, width: 220, to: content)
+        addField(tag: FieldTag.runtimeTitleSpacing, value: model.layout.runtimeTitleSpacing, x: 270, y: 134, to: content)
+        let iconButton = NSButton(title: "Runtime Icons…", target: self, action: #selector(showRuntimeIcons(_:)))
+        iconButton.bezelStyle = .rounded
+        iconButton.frame = NSRect(x: 370, y: 132, width: 130, height: 28)
+        content.addSubview(iconButton)
+
         let note = NSTextField(wrappingLabelWithString: "X / Y values are design-canvas coordinates. Changes apply immediately and are saved for the next launch.")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
-        note.frame = NSRect(x: 28, y: 120, width: 520, height: 40)
+        note.frame = NSRect(x: 28, y: 84, width: 520, height: 40)
         content.addSubview(note)
     }
 
     private func addLabel(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, to view: NSView) {
         let label = NSTextField(labelWithString: text)
         label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
-        label.textColor = PixelPalette.cream
+        label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
         label.frame = NSRect(x: x, y: y, width: width, height: 18)
         view.addSubview(label)
     }
@@ -539,6 +754,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
             FieldTag.agentOpacity: model.layout.agentOpacity,
             FieldTag.sessionOpacity: model.layout.activeSessionOpacity,
             FieldTag.sessionCardOpacity: model.layout.sessionCardOpacity
+            ,FieldTag.runtimeTitleSpacing: model.layout.runtimeTitleSpacing
         ]
         for (tag, value) in values { fields[tag]?.stringValue = format(value) }
     }
@@ -554,7 +770,13 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         layout.agentOpacity = min(max(value(FieldTag.agentOpacity), 0), 1)
         layout.activeSessionOpacity = min(max(value(FieldTag.sessionOpacity), 0), 1)
         layout.sessionCardOpacity = min(max(value(FieldTag.sessionCardOpacity), 0), 1)
+        layout.runtimeTitleSpacing = min(max(value(FieldTag.runtimeTitleSpacing), 0), 120)
         model.updateLayout(layout)
         reloadFields()
+    }
+
+    @objc private func showRuntimeIcons(_ sender: NSButton) {
+        if runtimeIconController == nil { runtimeIconController = RuntimeIconSettingsWindowController(model: model, parentWindow: window) }
+        runtimeIconController?.showWindow(nil)
     }
 }
