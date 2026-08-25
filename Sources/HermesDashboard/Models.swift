@@ -42,6 +42,7 @@ struct TextStyle: Codable, Equatable {
     var fontName: String
     var pointSize: CGFloat
     var colorHex: String
+    var smoothRendering: Bool
     /// The base position for this text group in design-canvas coordinates.
     /// Panel-contained styles use coordinates relative to their panel origin.
     var x: CGFloat
@@ -51,14 +52,16 @@ struct TextStyle: Codable, Equatable {
         case fontName
         case pointSize
         case colorHex
+        case smoothRendering
         case x
         case y
     }
 
-    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0) {
+    init(fontName: String, pointSize: CGFloat, colorHex: String, x: CGFloat = 0, y: CGFloat = 0, smoothRendering: Bool = false) {
         self.fontName = fontName
         self.pointSize = pointSize
         self.colorHex = colorHex
+        self.smoothRendering = smoothRendering
         self.x = x
         self.y = y
     }
@@ -68,6 +71,7 @@ struct TextStyle: Codable, Equatable {
         fontName = try container.decode(String.self, forKey: .fontName)
         pointSize = try container.decode(CGFloat.self, forKey: .pointSize)
         colorHex = try container.decode(String.self, forKey: .colorHex)
+        smoothRendering = try container.decodeIfPresent(Bool.self, forKey: .smoothRendering) ?? false
         x = try container.decodeIfPresent(CGFloat.self, forKey: .x) ?? 0
         y = try container.decodeIfPresent(CGFloat.self, forKey: .y) ?? 0
     }
@@ -169,6 +173,7 @@ struct DashboardStyles: Codable, Equatable {
         }
         var merged = DashboardStyles.defaults
         let shouldMigrateLegacyPixelStyles = !UserDefaults.standard.bool(forKey: "didMigrateLegacyPixelStyles")
+        let shouldResetSmoothRendering = !UserDefaults.standard.bool(forKey: "didMigrateSmoothRenderingDefaults")
         for key in DashboardStyleKey.allCases {
             if let saved = decoded.values[key.rawValue] {
                 var migrated = saved
@@ -181,6 +186,9 @@ struct DashboardStyles: Codable, Equatable {
                 }
                 if shouldMigrateLegacyPixelStyles && migrated.fontName == TextStyle.builtInPixelFont {
                     migrated.fontName = (key == .clock || key == .title) ? TextStyle.silkscreenBold : TextStyle.silkscreenRegular
+                }
+                if shouldResetSmoothRendering {
+                    migrated.smoothRendering = false
                 }
                 merged.values[key.rawValue] = migrated
             }
@@ -203,6 +211,10 @@ struct DashboardStyles: Codable, Equatable {
         }
         if shouldMigrateLegacyPixelStyles {
             UserDefaults.standard.set(true, forKey: "didMigrateLegacyPixelStyles")
+        }
+        if shouldResetSmoothRendering {
+            UserDefaults.standard.set(true, forKey: "didMigrateSmoothRenderingDefaults")
+            merged.save()
         }
         return merged
     }

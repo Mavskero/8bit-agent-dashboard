@@ -21,7 +21,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.model = model
         self.parentWindow = parentWindow
         self.onDisplayChanged = onDisplayChanged
-        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 900, height: 720), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         window.title = "Hermes Dashboard Settings"
         window.isFloatingPanel = true
         window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
@@ -29,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.hidesOnDeactivate = false
         window.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
         window.appearance = NSAppearance(named: .aqua)
-        window.minSize = NSSize(width: 880, height: 620)
+        window.minSize = NSSize(width: 980, height: 620)
         super.init(window: window)
         window.delegate = self
         buildContent()
@@ -65,7 +65,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let title = NSTextField(labelWithString: "DASHBOARD CONTROL")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 674, width: 750, height: 26)
+        title.frame = NSRect(x: 28, y: 674, width: 930, height: 26)
         content.addSubview(title)
 
         let sourceLabel = makeLabel("RUNTIME STATUS SOURCE")
@@ -133,22 +133,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let styleTitle = makeLabel("TEXT STYLE OVERRIDES")
         styleTitle.frame = NSRect(x: 28, y: 376, width: 300, height: 20)
         content.addSubview(styleTitle)
-        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR       R       G       B")
+        let columnHint = NSTextField(labelWithString: "POSITION X       Y       FONT FAMILY                         SIZE       COLOR       R       G       B       SMOOTH + 2X")
         columnHint.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         columnHint.textColor = PixelPalette.cyanDim
-        columnHint.frame = NSRect(x: 38, y: 353, width: 830, height: 16)
+        columnHint.frame = NSRect(x: 38, y: 353, width: 930, height: 16)
         content.addSubview(columnHint)
 
         let documentHeight = CGFloat(DashboardStyleKey.allCases.count) * 44 + 12
-        let document = NSView(frame: NSRect(x: 0, y: 0, width: 830, height: documentHeight))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 930, height: documentHeight))
         for (index, key) in DashboardStyleKey.allCases.enumerated() {
             let y = documentHeight - CGFloat(index + 1) * 44
             let row = StyleRow(key: key, style: model.styles.style(for: key), owner: self)
-            row.frame = NSRect(x: 8, y: y, width: 814, height: 40)
+            row.frame = NSRect(x: 8, y: y, width: 914, height: 40)
             document.addSubview(row)
             styleRows[key] = row
         }
-        let scroll = NSScrollView(frame: NSRect(x: 28, y: 82, width: 844, height: 260))
+        let scroll = NSScrollView(frame: NSRect(x: 28, y: 82, width: 944, height: 260))
         scroll.documentView = document
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
@@ -159,12 +159,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let note = NSTextField(wrappingLabelWithString: "Styles are saved immediately. Imported .ttf/.otf/.ttc files are kept in Application Support and registered at launch.")
         note.font = NSFont.systemFont(ofSize: 10)
         note.textColor = NSColor.secondaryLabelColor
-        note.frame = NSRect(x: 290, y: 42, width: 580, height: 28)
+        note.frame = NSRect(x: 290, y: 42, width: 680, height: 28)
         content.addSubview(note)
 
         statusPathLabel.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
         statusPathLabel.textColor = NSColor.secondaryLabelColor
-        statusPathLabel.frame = NSRect(x: 28, y: 18, width: 840, height: 18)
+        statusPathLabel.frame = NSRect(x: 28, y: 18, width: 930, height: 18)
         content.addSubview(statusPathLabel)
         updateStatusPathLabel()
     }
@@ -328,9 +328,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for (key, row) in styleRows { row.apply(style: model.styles.style(for: key)) }
     }
 
-    fileprivate func styleChanged(key: DashboardStyleKey, fontName: String, size: CGFloat, color: NSColor, x: CGFloat, y: CGFloat) {
+    fileprivate func styleChanged(key: DashboardStyleKey, fontName: String, size: CGFloat, color: NSColor, x: CGFloat, y: CGFloat, smoothRendering: Bool) {
         model.updateStyle(
-            TextStyle(fontName: fontName, pointSize: max(size, 6), colorHex: color.hexString, x: x, y: y),
+            TextStyle(fontName: fontName, pointSize: max(size, 6), colorHex: color.hexString, x: x, y: y, smoothRendering: smoothRendering),
             for: key
         )
     }
@@ -374,6 +374,7 @@ private final class StyleRow: NSView {
     private let redField = NSTextField(string: "")
     private let greenField = NSTextField(string: "")
     private let blueField = NSTextField(string: "")
+    private let smoothButton = NSButton(checkboxWithTitle: "Smooth + 2x", target: nil, action: nil)
 
     init(key: DashboardStyleKey, style: TextStyle, owner: SettingsWindowController) {
         self.key = key
@@ -440,6 +441,11 @@ private final class StyleRow: NSView {
             field.action = #selector(rgbChanged(_:))
             addSubview(field)
         }
+        smoothButton.font = NSFont.systemFont(ofSize: 10)
+        smoothButton.frame = NSRect(x: 814, y: 7, width: 90, height: 24)
+        smoothButton.target = self
+        smoothButton.action = #selector(smoothChanged(_:))
+        addSubview(smoothButton)
         apply(style: style)
     }
 
@@ -463,6 +469,7 @@ private final class StyleRow: NSView {
         yField.stringValue = format(style.y)
         sizeField.stringValue = String(Int(style.pointSize.rounded()))
         colorWell.color = style.color
+        smoothButton.state = style.smoothRendering ? .on : .off
         syncRGBFields()
     }
 
@@ -477,7 +484,8 @@ private final class StyleRow: NSView {
             size: CGFloat(Double(sizeField.stringValue) ?? 12),
             color: colorWell.color,
             x: CGFloat(Double(xField.stringValue) ?? 0),
-            y: CGFloat(Double(yField.stringValue) ?? 0)
+            y: CGFloat(Double(yField.stringValue) ?? 0),
+            smoothRendering: smoothButton.state == .on
         )
     }
 
@@ -496,6 +504,7 @@ private final class StyleRow: NSView {
         sendChange()
     }
     @objc private func positionChanged(_ sender: NSTextField) { sendChange() }
+    @objc private func smoothChanged(_ sender: NSButton) { sendChange() }
     private func syncRGBFields() {
         guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return }
         redField.stringValue = String(Int(round(rgb.redComponent * 255)))
