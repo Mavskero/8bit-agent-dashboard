@@ -92,6 +92,7 @@ enum DashboardStyleKey: String, CaseIterable {
     case title
     case runtime
     case agent
+    case agentActivity
     case activeSessionTitle
     case activeSessionName
     case activeSessionUpdatedAt
@@ -108,6 +109,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .title: return "Now Playing · Title"
         case .runtime: return "Runtime Status"
         case .agent: return "Hermes Agent"
+        case .agentActivity: return "Hermes Agent · Activity"
         case .activeSessionTitle: return "Active Session · Header"
         case .activeSessionName: return "Active Session · Name"
         case .activeSessionUpdatedAt: return "Active Session · Last Conversation"
@@ -128,6 +130,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .title: return CGPoint(x: 42, y: 287)
         case .runtime: return CGPoint(x: 30, y: 22)
         case .agent: return CGPoint(x: 18, y: 18)
+        case .agentActivity: return CGPoint(x: 288, y: 66)
         case .activeSessionTitle: return CGPoint(x: 24, y: 16)
         case .activeSessionName: return CGPoint(x: 24, y: 46)
         case .activeSessionUpdatedAt: return CGPoint(x: 500, y: 22)
@@ -150,6 +153,7 @@ struct DashboardStyles: Codable, Equatable {
             DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F9F0E2", x: 42, y: 287, smoothRendering: true),
             DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "Pixelon", pointSize: 39, colorHex: "FBF5ED", x: 30, y: 22, smoothRendering: true),
             DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "64EBEE", x: 18, y: 18, smoothRendering: false),
+            DashboardStyleKey.agentActivity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 14, colorHex: "F5EAD2", x: 288, y: 66, smoothRendering: true),
             DashboardStyleKey.activeSessionTitle.rawValue: TextStyle(fontName: "Pixelon", pointSize: 35, colorHex: "FDF9F4", x: 24, y: 10, smoothRendering: true),
             DashboardStyleKey.activeSessionName.rawValue: TextStyle(fontName: "HanziPen SC", pointSize: 21, colorHex: "F5EAD2", x: 24, y: 44, smoothRendering: true),
             DashboardStyleKey.activeSessionUpdatedAt.rawValue: TextStyle(fontName: "Pixelon", pointSize: 22, colorHex: "81EFF5", x: 957, y: 48, smoothRendering: true),
@@ -414,7 +418,7 @@ struct ProviderSettings: Codable, Equatable {
         baseURL: "https://teamorouter.com",
         balancePath: "/v1/billing/balance",
         balanceJSONPath: "balance.value",
-        refreshInterval: 600,
+        refreshInterval: 1800,
         lastBalance: "$19.58",
         lastBalanceValue: 19.57842664
     )
@@ -422,6 +426,10 @@ struct ProviderSettings: Codable, Equatable {
     static func load() -> ProviderSettings {
         guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
               var value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
+        if value.refreshInterval == 600 {
+            value.refreshInterval = 1800
+            value.save()
+        }
         if !value.lastBalance.isEmpty && !value.lastBalance.contains("$") {
             if let numeric = Double(value.lastBalance.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 value.lastBalance = String(format: "$%.2f", numeric)
@@ -448,6 +456,7 @@ struct ProviderSettings: Codable, Equatable {
 enum AgentState: String {
     case working
     case thinking
+    case outputting
     case done
     case idle
     case error
@@ -456,6 +465,7 @@ enum AgentState: String {
         switch rawValue.lowercased() {
         case "working", "running", "executing": self = .working
         case "thinking", "planning": self = .thinking
+        case "outputting", "outputing", "streaming", "generating": self = .outputting
         case "done", "complete", "completed", "success": self = .done
         case "error", "failed": self = .error
         default: self = .idle
@@ -464,10 +474,11 @@ enum AgentState: String {
 
     var label: String {
         switch self {
-        case .working: return "WORKING..."
-        case .thinking: return "THINKING..."
+        case .working: return "WORKING"
+        case .thinking: return "THINKING"
+        case .outputting: return "OUTPUTTING"
         case .done: return "DONE"
-        case .idle: return "IDLE"
+        case .idle: return "DONE"
         case .error: return "ERROR"
         }
     }
@@ -477,8 +488,11 @@ enum WeatherCondition {
     case clear
     case partlyCloudy
     case cloudy
+    case fog
+    case drizzle
     case rain
     case snow
+    case thunderstorm
     case unknown
 
     var displayName: String {
@@ -486,8 +500,11 @@ enum WeatherCondition {
         case .clear: return "CLEAR"
         case .partlyCloudy: return "PARTLY CLOUDY"
         case .cloudy: return "CLOUDY"
+        case .fog: return "FOG"
+        case .drizzle: return "DRIZZLE"
         case .rain: return "RAIN"
         case .snow: return "SNOW"
+        case .thunderstorm: return "STORM"
         case .unknown: return "UNKNOWN"
         }
     }
@@ -533,6 +550,19 @@ struct SessionInfo {
     var contextPercent: Int = 0
 }
 
+enum AgentActivityKind {
+    case think
+    case tool
+    case result
+    case reply
+    case status
+}
+
+struct AgentActivityEvent {
+    var kind: AgentActivityKind
+    var text: String
+}
+
 struct RuntimeStatus {
     var source: RuntimeSource
     var model: String
@@ -547,6 +577,7 @@ struct RuntimeStatus {
     var contextPercent: Int
     var agentState: AgentState
     var sessions: [SessionInfo]
+    var activityLog: [AgentActivityEvent]
     var isLive: Bool
     var hasModelData: Bool
     var hasContextData: Bool
@@ -572,6 +603,13 @@ struct RuntimeStatus {
                 SessionInfo(title: "Write release notes", progress: 24, status: "", updatedAt: "13:22"),
                 SessionInfo(title: "Review telemetry output", progress: 0, status: "", updatedAt: "12:10")
             ],
+            activityLog: [
+                AgentActivityEvent(kind: .status, text: "STANDBY  waiting for hermes"),
+                AgentActivityEvent(kind: .think, text: "THINK  parse dashboard layout"),
+                AgentActivityEvent(kind: .tool, text: "TOOL  terminal  git status"),
+                AgentActivityEvent(kind: .result, text: "OK  working tree clean"),
+                AgentActivityEvent(kind: .reply, text: "REPLY  dashboard layout is ready")
+            ],
             isLive: false,
             hasModelData: false,
             hasContextData: false
@@ -591,6 +629,9 @@ struct RuntimeStatus {
         }
         if activeSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             merged.activeSession = previous.activeSession
+        }
+        if activityLog.isEmpty {
+            merged.activityLog = previous.activityLog
         }
         return merged
     }
@@ -622,6 +663,7 @@ final class DashboardModel: NSObject {
         static let wallpaperCleared = "wallpaperCleared"
         static let assetFolderPath = "assetFolderPath"
         static let weatherCity = "weatherCity"
+        static let didPreferHermesRuntime = "didPreferHermesRuntime"
     }
 
     private static var bundledWallpaperPath: String? {
@@ -636,10 +678,16 @@ final class DashboardModel: NSObject {
     private let balanceService = ProviderBalanceService()
     private var refreshTimer: Timer?
     private var balanceTimer: Timer?
+    private var weatherTimer: Timer?
 
     override init() {
-        let storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
-            .flatMap(RuntimeSource.init(rawValue:)) ?? .codex
+        var storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
+            .flatMap(RuntimeSource.init(rawValue:)) ?? .hermes
+        if storedSource == .codex && !UserDefaults.standard.bool(forKey: Keys.didPreferHermesRuntime) {
+            storedSource = .hermes
+            UserDefaults.standard.set(RuntimeSource.hermes.rawValue, forKey: Keys.runtimeSource)
+            UserDefaults.standard.set(true, forKey: Keys.didPreferHermesRuntime)
+        }
         runtimeSource = storedSource
         runtime = RuntimeStatus.demo(source: storedSource)
         if let storedWallpaperPath = UserDefaults.standard.string(forKey: Keys.wallpaperPath) {
@@ -654,7 +702,7 @@ final class DashboardModel: NSObject {
         layout = DashboardLayout.load()
         providerSettings = ProviderSettings.load()
         weatherCity = UserDefaults.standard.string(forKey: Keys.weatherCity) ?? Self.defaultWeatherCity
-        assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)))
+        assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)) ?? Bundle.main.resourceURL)
         super.init()
     }
 
@@ -662,6 +710,7 @@ final class DashboardModel: NSObject {
         refreshAll()
         refreshBalance()
         scheduleBalanceTimer()
+        scheduleWeatherTimer()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshDynamicData()
         }
@@ -672,6 +721,8 @@ final class DashboardModel: NSObject {
         refreshTimer = nil
         balanceTimer?.invalidate()
         balanceTimer = nil
+        weatherTimer?.invalidate()
+        weatherTimer = nil
     }
 
     func setWallpaper(url: URL?) {
@@ -693,7 +744,7 @@ final class DashboardModel: NSObject {
         } else {
             UserDefaults.standard.removeObject(forKey: Keys.assetFolderPath)
         }
-        assetStore = DashboardAssetStore(folderURL: url)
+        assetStore = DashboardAssetStore(folderURL: url ?? Bundle.main.resourceURL)
         notifyChange()
     }
 
@@ -774,8 +825,16 @@ final class DashboardModel: NSObject {
 
     private func scheduleBalanceTimer() {
         balanceTimer?.invalidate()
-        balanceTimer = Timer.scheduledTimer(withTimeInterval: providerSettings.refreshInterval, repeats: true) { [weak self] _ in
+        let interval = min(max(providerSettings.refreshInterval, 30), 86_400)
+        balanceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.refreshBalance()
+        }
+    }
+
+    private func scheduleWeatherTimer() {
+        weatherTimer?.invalidate()
+        weatherTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+            self?.refreshWeather()
         }
     }
 
@@ -814,25 +873,36 @@ final class DashboardAssetStore {
     }
 
     func weatherImage(condition: WeatherCondition, at time: TimeInterval) -> CGImage? {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let isNight = hour < 6 || hour >= 18
         let names: [String]
         switch condition {
-        case .clear: names = ["weather-clear", "weather"]
-        case .partlyCloudy: names = ["weather-partly-cloudy", "weather-cloudy", "weather"]
+        case .clear:
+            names = isNight ? ["weather-clear-night", "weather-clear", "weather"] : ["weather-clear", "weather"]
+        case .partlyCloudy:
+            names = isNight
+                ? ["weather-partly-cloudy-night", "weather-partly-cloudy", "weather-cloudy", "weather"]
+                : ["weather-partly-cloudy", "weather-cloudy", "weather"]
         case .cloudy: names = ["weather-cloudy", "weather"]
+        case .fog: names = ["weather-fog", "weather-cloudy", "weather"]
+        case .drizzle: names = ["weather-drizzle", "weather-rain", "weather"]
         case .rain: names = ["weather-rain", "weather"]
         case .snow: names = ["weather-snow", "weather"]
+        case .thunderstorm: names = ["weather-storm", "weather-rain", "weather"]
         case .unknown: names = ["weather", "weather-clear"]
         }
         return image(names: names, subfolders: ["weather", "icons"], at: time)
     }
 
     func agentImage(state: AgentState, at time: TimeInterval) -> CGImage? {
-        let names = [
+        var names = [
             "hermes-\(state.rawValue)",
-            "agent-\(state.rawValue)",
-            "hermes",
-            "agent"
+            "agent-\(state.rawValue)"
         ]
+        if state == .outputting {
+            names.append(contentsOf: ["hermes-working", "agent-working"])
+        }
+        names.append(contentsOf: ["hermes", "agent"])
         return image(names: names, subfolders: ["hermes", "agent", "icons"], at: time)
     }
 

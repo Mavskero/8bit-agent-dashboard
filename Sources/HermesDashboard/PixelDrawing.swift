@@ -142,6 +142,33 @@ struct PixelPainter {
         drawAsset(image, in: CGRect(x: point.x.rounded(.toNearestOrAwayFromZero), y: point.y.rounded(.toNearestOrAwayFromZero), width: imageSize.width, height: imageSize.height), interpolation: style.smoothRendering ? .high : .none, context: context)
     }
 
+    static func wrappedLines(_ text: String, style: TextStyle, maxWidth: CGFloat, maxLines: Int) -> [String] {
+        guard maxLines > 0, maxWidth > 8, !text.isEmpty else { return [] }
+        var lines: [String] = []
+        var current = ""
+        for character in text {
+            let candidate = current + String(character)
+            if PixelPainter.textWidth(candidate, style: style) <= maxWidth {
+                current = candidate
+                continue
+            }
+            if !current.isEmpty {
+                lines.append(current)
+                if lines.count == maxLines { return lines }
+            }
+            current = String(character)
+            if PixelPainter.textWidth(current, style: style) > maxWidth {
+                lines.append(current)
+                current = ""
+                if lines.count == maxLines { return lines }
+            }
+        }
+        if !current.isEmpty && lines.count < maxLines {
+            lines.append(current)
+        }
+        return lines
+    }
+
     static func textWidth(_ text: String, style: TextStyle) -> CGFloat {
         if style.fontName == TextStyle.builtInPixelFont {
             return pixelTextWidth(text, scale: max(style.pointSize / 7, 1))
@@ -186,46 +213,199 @@ struct PixelPainter {
         }
     }
 
-    static func drawWeatherIcon(at point: CGPoint, scale: CGFloat, condition _: WeatherCondition, context: CGContext) {
-        let moon: [String] = [
-            "000001111000000", "000111111100000", "001111111110000", "011111111111000",
-            "011111111111000", "111111111111100", "111111111111100", "111111111111100",
-            "111111111111100", "011111111111000", "011111111111000", "001111111110000",
-            "000111111100000", "000001111000000", "000000000000000"
+    static func drawWeatherIcon(at point: CGPoint, scale: CGFloat, condition: WeatherCondition, context: CGContext) {
+        let yellow = PixelPalette.yellow
+        let orange = PixelPalette.orange
+        let cream = PixelPalette.cream
+        let gray = PixelPalette.borderBright
+        let cyan = PixelPalette.cyan
+        let white = NSColor(calibratedRed: 0.92, green: 0.94, blue: 0.98, alpha: 1)
+        let bolt = NSColor(calibratedRed: 0.99, green: 0.86, blue: 0.22, alpha: 1)
+        let sprite: [String]
+        switch condition {
+        case .clear:
+            sprite = [
+                "......Y.......",
+                ".Y...YYY...Y..",
+                "..Y.YYYYY.Y...",
+                "...YYYYYYY....",
+                "..YYYYYYYYY...",
+                ".YYYYOoYYYYY..",
+                "YYYYYOoYYYYYY.",
+                ".YYYYOoYYYYY..",
+                "..YYYYYYYYY...",
+                "...YYYYYYY....",
+                "..Y.YYYYY.Y...",
+                ".Y...YYY...Y..",
+                "......Y.......",
+                ".............."
+            ]
+        case .partlyCloudy:
+            sprite = [
+                "....Y.........",
+                ".Y.YYY.Y......",
+                "..YYYYY.......",
+                ".YYYYYYY......",
+                "..YYYYY.www...",
+                "...YYY.wwwww..",
+                "....Y.wwWWWww.",
+                ".....wwWWWWWw.",
+                "....wWWWWWWWWw",
+                "...wwWWWWWWWWw",
+                "....wWWWWWWWw.",
+                ".....wwWWWww..",
+                "..............",
+                ".............."
+            ]
+        case .cloudy:
+            sprite = [
+                "..............",
+                ".....www......",
+                "...wwWWWww....",
+                "..wWWWWWWWw...",
+                ".wwWWWWWWWWw..",
+                ".wWWWWWWWWWWw.",
+                "wwWWWWWWWWWWw.",
+                ".wWWWWWWWWWw..",
+                "..wwWWWWWWw...",
+                "..............",
+                "..............",
+                "..............",
+                "..............",
+                ".............."
+            ]
+        case .fog:
+            sprite = [
+                "..............",
+                "...ggggggg....",
+                "..............",
+                ".ggggggggggg..",
+                "..............",
+                "...gggggggg...",
+                "..............",
+                ".ggggggggggg..",
+                "..............",
+                "....gggggg....",
+                "..............",
+                "..ggggggggg...",
+                "..............",
+                ".............."
+            ]
+        case .drizzle:
+            sprite = [
+                ".....www......",
+                "...wwWWWww....",
+                "..wWWWWWWWw...",
+                ".wwWWWWWWWWw..",
+                ".wWWWWWWWWWWw.",
+                "..wWWWWWWWWWw.",
+                "...wwWWWWWWw..",
+                "....b...b.....",
+                "..b...b...b...",
+                "....b...b.....",
+                "..b...b...b...",
+                "..............",
+                "..............",
+                ".............."
+            ]
+        case .rain:
+            sprite = [
+                ".....www......",
+                "...wwWWWww....",
+                "..wWWWWWWWw...",
+                ".wWWWWWWWWWWw.",
+                "wwWWWWWWWWWWw.",
+                ".wWWWWWWWWWw..",
+                "..wwWWWWWWw...",
+                "...B..B..B....",
+                "..B..B..B.....",
+                ".B..B..B......",
+                "...B..B..B....",
+                "..B..B..B.....",
+                "..............",
+                ".............."
+            ]
+        case .snow:
+            sprite = [
+                ".....www......",
+                "...wwWWWww....",
+                "..wWWWWWWWw...",
+                ".wWWWWWWWWWWw.",
+                "wwWWWWWWWWWWw.",
+                ".wWWWWWWWWWw..",
+                "..wwWWWWWWw...",
+                "...*..*..*....",
+                ".*...*...*....",
+                "...*..*..*....",
+                ".*...*...*....",
+                "..............",
+                "..............",
+                ".............."
+            ]
+        case .thunderstorm:
+            sprite = [
+                ".....ggg......",
+                "...ggGGGgg....",
+                "..gGGGGGGGg...",
+                ".gGGGGGGGGGg..",
+                "gGGGGGGGGGGGg.",
+                ".gGGGGGGGGGg..",
+                "..ggGzzGGGg...",
+                "....zzz.......",
+                "...zz.........",
+                "...zzzzz......",
+                ".....zz.......",
+                "....zz........",
+                "....z.........",
+                ".............."
+            ]
+        case .unknown:
+            sprite = [
+                ".....www......",
+                "...wwWWWww....",
+                "..wWW??WWWw...",
+                ".wWW?ww?WWWw..",
+                ".wWWww?WWWWW..",
+                ".wWWW?WWWWWw..",
+                "..wWWW?WWWw...",
+                "...wwW?WWw....",
+                ".....w?w......",
+                "..............",
+                "......ww......",
+                "......ww......",
+                "..............",
+                ".............."
+            ]
+        }
+        let palette: [Character: NSColor] = [
+            "Y": yellow,
+            "O": orange,
+            "o": orange.withAlphaComponent(0.85),
+            "w": gray,
+            "W": cream,
+            "g": gray.withAlphaComponent(0.7),
+            "G": gray,
+            "b": cyan.withAlphaComponent(0.7),
+            "B": cyan,
+            "*": white,
+            "z": bolt,
+            "?": PixelPalette.violet
         ]
-        let moonGold = NSColor(calibratedRed: 0.84, green: 0.62, blue: 0.30, alpha: 1)
-        moonGold.setFill()
-        for (row, line) in moon.enumerated() {
-            for (column, bit) in line.enumerated() where bit == "1" {
-                context.fill(CGRect(x: point.x + CGFloat(column) * scale, y: point.y + CGFloat(row) * scale, width: scale, height: scale))
+        drawPixelSprite(sprite, at: point, scale: scale, palette: palette, context: context)
+    }
+
+    private static func drawPixelSprite(_ rows: [String], at point: CGPoint, scale: CGFloat, palette: [Character: NSColor], context: CGContext) {
+        for (row, line) in rows.enumerated() {
+            for (column, pixel) in line.enumerated() {
+                guard let color = palette[pixel] else { continue }
+                color.setFill()
+                context.fill(CGRect(
+                    x: point.x + CGFloat(column) * scale,
+                    y: point.y + CGFloat(row) * scale,
+                    width: scale,
+                    height: scale
+                ))
             }
-        }
-        navy.setFill()
-        for (row, line) in moon.enumerated() {
-            for (column, bit) in line.enumerated() where bit == "1" && column > 7 {
-                context.fill(CGRect(x: point.x + CGFloat(column) * scale, y: point.y + CGFloat(row) * scale, width: scale, height: scale))
-            }
-        }
-
-        // A few square craters and a low cloud give the weather marker the same
-        // illustrated, layered silhouette as the reference dashboard.
-        let crater = NSColor(calibratedRed: 0.64, green: 0.42, blue: 0.18, alpha: 1)
-        for (x, y, width, height) in [(5, 4, 2, 2), (8, 8, 2, 2), (5, 11, 1, 1)] {
-            crater.setFill()
-            context.fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: CGFloat(width) * scale, height: CGFloat(height) * scale))
-        }
-
-        PixelPalette.borderBright.setFill()
-        for (x, y, width) in [(0, 16, 5), (3, 14, 6), (8, 16, 6), (13, 15, 4)] {
-            context.fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: CGFloat(width) * scale, height: 2 * scale))
-        }
-
-        // Keep the weather marker within the same vertical row as the time.
-        // The moon and a few stars communicate night conditions without adding
-        // a second text block or pushing a cloud into the date line.
-        PixelPalette.cream.setFill()
-        for (x, y) in [(2, 2), (12, 5), (13, 10)] {
-            context.fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: scale, height: scale))
         }
     }
 
@@ -253,7 +433,7 @@ struct PixelPainter {
             fill(CGRect(x: point.x + CGFloat(x) * scale, y: point.y + CGFloat(y) * scale, width: CGFloat(width) * scale, height: CGFloat(height) * scale), color: color, context: context)
         }
 
-        let bob = state == .working && phase % 2 == 0 ? 1 : 0
+        let bob = (state == .working || state == .outputting) && phase % 2 == 0 ? 1 : 0
         let handOffset = state == .thinking ? -2 : (state == .done ? -4 : 0)
         rect(1, 23 + bob, 26, 4, PixelPalette.border)
         rect(4, 18 + bob, 20, 8, PixelPalette.navy)

@@ -1,0 +1,15 @@
+Pixel weather icons bundled with Hermes Dashboard.
+
+Source: Clasurol / weather-pixel-icons-Win9x-Style
+https://github.com/Clasurol/weather-pixel-icons-Win9x-Style
+
+Based on Dhole / weather-pixel-icons (CC BY-SA 4.0)
+https://github.com/Dhole/weather-pixel-icons
+
+License: Creative Commons Attribution-ShareAlike 4.0 International
+See LICENSE-CC-BY-SA.txt in this folder.
+
+Processing for this app:
+- restored native 32x32 pixels from the 256x256 upscale (nearest-neighbor)
+- chroma-keyed the solid blue/navy canvas so the sprites are transparent
+- files renamed to weather-*.png for Open-Meteo condition mapping

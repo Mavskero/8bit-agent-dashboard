@@ -274,6 +274,15 @@ final class DashboardView: NSView {
         }
     }
 
+    private var agentStatusColor: NSColor {
+        switch model.runtime.agentState {
+        case .thinking: return PixelPalette.violet
+        case .outputting, .working: return PixelPalette.cyan
+        case .error: return PixelPalette.red
+        case .done, .idle: return PixelPalette.green
+        }
+    }
+
     private func thinkingColor(_ value: String) -> NSColor {
         switch value.lowercased() {
         case "low", "minimal": return PixelPalette.green
@@ -303,8 +312,6 @@ final class DashboardView: NSView {
         let agentRect = CGRect(x: agentOrigin.x, y: agentOrigin.y, width: 584, height: bottomModuleHeight)
         PixelPainter.drawFrame(agentRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.agentOpacity))
         drawText("HERMES AGENT", key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
-        var agentStateStyle = model.styles.style(for: .agent)
-        agentStateStyle.pointSize *= 0.72
         let currentState = model.runtime.agentState
         if let agentImage = model.assetStore.agentImage(state: currentState, at: CACurrentMediaTime()) {
             PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 164), context: context)
@@ -313,23 +320,21 @@ final class DashboardView: NSView {
         }
 
         PixelPalette.border.setFill()
-        context.fill(CGRect(x: agentOrigin.x + 260, y: agentOrigin.y + 54, width: 1, height: 180))
-        var stateHintStyle = model.styles.style(for: .agent)
-        stateHintStyle.pointSize *= 0.42
-        stateHintStyle.colorHex = PixelPalette.cyanDim.hexString
-        drawText("CURRENT STATE", key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 66), context: context, style: stateHintStyle)
-        drawText(currentState.label, key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 92), context: context, style: agentStateStyle)
-        var stateDetailStyle = stateHintStyle
-        stateDetailStyle.colorHex = PixelPalette.cream.hexString
-        drawText(stateDescription(for: currentState), key: .agent, at: CGPoint(x: agentOrigin.x + 288, y: agentOrigin.y + 132), context: context, style: stateDetailStyle)
+        context.fill(CGRect(x: agentOrigin.x + 232, y: agentOrigin.y + 54, width: 1, height: 210))
+        drawAgentActivity(
+            in: CGRect(x: agentOrigin.x + 246, y: agentOrigin.y + 54, width: 318, height: 216),
+            context: context
+        )
 
         var liveStyle = model.styles.style(for: .agent)
         liveStyle.pointSize *= 0.6
-        let liveColor = model.runtime.isLive ? PixelPalette.green : PixelPalette.cyanDim
+        let liveLabel = model.runtime.agentState.label
+        let liveColor = agentStatusColor
         liveStyle.colorHex = liveColor.hexString
-        drawText(model.runtime.isLive ? "LIVE" : "LOCAL", key: .agent, at: CGPoint(x: agentOrigin.x + 510, y: agentOrigin.y + 18), context: context, style: liveStyle)
+        let liveWidth = PixelPainter.textWidth(liveLabel, style: liveStyle)
+        drawText(liveLabel, key: .agent, at: CGPoint(x: agentOrigin.x + 566 - liveWidth, y: agentOrigin.y + 18), context: context, style: liveStyle)
         liveColor.setFill()
-        context.fill(CGRect(x: agentOrigin.x + 500, y: agentOrigin.y + 74, width: 8, height: 8))
+        context.fill(CGRect(x: agentOrigin.x + 550 - liveWidth, y: agentOrigin.y + 26, width: 8, height: 8))
 
         let sessionOrigin = model.layout.activeSession
         let sessionRect = CGRect(x: sessionOrigin.x, y: sessionOrigin.y, width: 636, height: bottomModuleHeight)
@@ -361,6 +366,42 @@ final class DashboardView: NSView {
         // remaining four sessions are assigned to these child frames.
         for (index, card) in recent.dropFirst().prefix(4).enumerated() {
             drawSessionCard(card, rect: positions[index], context: context)
+        }
+    }
+
+    private func drawAgentActivity(in rect: CGRect, context: CGContext) {
+        context.saveGState()
+        context.clip(to: rect)
+        let style = model.styles.style(for: .agentActivity)
+        let lineHeight = max(style.pointSize + 6, 16)
+        let maxLines = max(Int(rect.height / lineHeight), 1)
+        var lines: [(String, AgentActivityKind)] = []
+        for event in model.runtime.activityLog {
+            var eventStyle = style
+            eventStyle.colorHex = activityColor(for: event.kind).hexString
+            let wrapped = PixelPainter.wrappedLines(event.text, style: eventStyle, maxWidth: rect.width - 4, maxLines: 8)
+            for line in wrapped {
+                lines.append((line, event.kind))
+            }
+        }
+        let visible = Array(lines.suffix(maxLines))
+        var y = rect.minY + 2
+        for (line, kind) in visible {
+            var eventStyle = style
+            eventStyle.colorHex = activityColor(for: kind).hexString
+            drawText(line, key: .agentActivity, at: CGPoint(x: rect.minX, y: y), context: context, style: eventStyle)
+            y += lineHeight
+        }
+        context.restoreGState()
+    }
+
+    private func activityColor(for kind: AgentActivityKind) -> NSColor {
+        switch kind {
+        case .think: return PixelPalette.violet
+        case .tool: return PixelPalette.cyan
+        case .result: return PixelPalette.green
+        case .reply: return PixelPalette.cream
+        case .status: return PixelPalette.yellow
         }
     }
 
@@ -434,16 +475,6 @@ final class DashboardView: NSView {
             y: point.y + position.y - defaultPosition.y
         )
         PixelPainter.drawText(text, at: adjustedPoint, style: style, context: context)
-    }
-
-    private func stateDescription(for state: AgentState) -> String {
-        switch state {
-        case .working: return "PROCESSING"
-        case .thinking: return "PLANNING"
-        case .done: return "COMPLETE"
-        case .idle: return "STANDBY"
-        case .error: return "ATTENTION"
-        }
     }
 
     private func drawOuterFrame(context: CGContext) {
