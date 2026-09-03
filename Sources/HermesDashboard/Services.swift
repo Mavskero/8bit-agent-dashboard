@@ -85,29 +85,28 @@ final class SystemWeatherService {
     private let queue = DispatchQueue(label: "hermes-dashboard.weather", qos: .utility)
     private let fileManager = FileManager.default
 
-    func fetch(city: String = "", completion: @escaping (WeatherSnapshot) -> Void) {
+    func fetch(settings: WeatherSettings, completion: @escaping (WeatherSnapshot) -> Void) {
         queue.async {
-            if !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if let live = self.fetchFromOpenMeteo(city: city) ?? self.fetchFromWttr(city: city) {
-                    DispatchQueue.main.async { completion(live) }
-                    return
-                }
+            let live: WeatherSnapshot?
+            switch settings.source {
+            case .qweather:
+                live = self.fetchFromQWeather(settings: settings)
+            case .openMeteo:
+                live = self.fetchFromOpenMeteo(city: settings.city) ?? self.fetchFromWttr(city: settings.city)
+            case .macOSWeather:
+                live = nil
             }
-            if let cached = self.readWeatherCache() {
-                DispatchQueue.main.async { completion(cached) }
-                return
-            }
-
-            let bridgeOutput = self.readWeatherAppAccessibilityTree()
-            let parsed = self.parseWeatherText(bridgeOutput) ?? .demo
-            DispatchQueue.main.async { completion(parsed) }
+            let snapshot = live ?? self.readSystemWeather() ?? .demo
+            DispatchQueue.main.async { completion(snapshot) }
         }
     }
 
-    private func jsonObject(from url: URL, timeout: TimeInterval = 8) -> [String: Any]? {
+    private func jsonObject(from url: URL, headers: [String: String] = [:], timeout: TimeInterval = 8) -> [String: Any]? {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
         request.setValue("HermesDashboard/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         let semaphore = DispatchSemaphore(value: 0)
         var result: [String: Any]?
         let task = URLSession.shared.dataTask(with: request) { data, response, _ in
@@ -126,6 +125,85 @@ final class SystemWeatherService {
         if let number = value as? Double { return number }
         if let text = value as? String { return Double(text) }
         return nil
+    }
+
+    private func fetchFromQWeather(settings: WeatherSettings) -> WeatherSnapshot? {
+        let host = settings.apiHost
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let key = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let city = settings.city.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !key.isEmpty, !city.isEmpty else { return nil }
+
+        let baseURL = host.hasPrefix("https://") ? host : "https://\(host)"
+        var lookup = URLComponents(string: "\(baseURL)/geo/v2/city/lookup")
+        lookup?.queryItems = [
+            URLQueryItem(name: "location", value: city),
+            URLQueryItem(name: "number", value: "1"),
+            URLQueryItem(name: "lang", value: "en")
+        ]
+        let headers = ["X-QW-Api-Key": key]
+        guard let lookupURL = lookup?.url,
+              let lookupObject = jsonObject(from: lookupURL, headers: headers),
+              (lookupObject["code"] as? String) == "200",
+              let location = (lookupObject["location"] as? [[String: Any]])?.first,
+              let latitude = location["lat"] as? String,
+              let longitude = location["lon"] as? String else { return nil }
+
+        let locationName = (location["name"] as? String) ?? city
+        var current = URLComponents(string: "\(baseURL)/weather/v1/current/\(latitude)/\(longitude)")
+        current?.queryItems = [URLQueryItem(name: "lang", value: "en")]
+        guard let currentURL = current?.url,
+              let object = jsonObject(from: currentURL, headers: headers),
+              let temperature = object["temperature"] as? [String: Any],
+              let value = jsonNumber(temperature["value"]) else { return nil }
+
+        let conditionObject = object["condition"] as? [String: Any]
+        let code = conditionObject?["code"] as? String ?? "999"
+        let text = conditionObject?["text"] as? String ?? ""
+        let unit = temperature["unit"] as? String ?? "°C"
+        let formatted = value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+        return WeatherSnapshot(
+            temperature: "\(formatted)\(unit)",
+            condition: qweatherCondition(code: code, text: text),
+            location: locationName,
+            isLive: true,
+            attribution: "QWEATHER"
+        )
+    }
+
+    private func qweatherCondition(code: String, text: String) -> WeatherCondition {
+        let value = Int(code) ?? 999
+        switch value {
+        case 100, 150: return .clear
+        case 101...103, 151...153: return .partlyCloudy
+        case 104, 154: return .cloudy
+        case 302...304: return .thunderstorm
+        case 309: return .drizzle
+        case 300...399: return .rain
+        case 400...499: return .snow
+        case 500...515: return .fog
+        default:
+            return conditionFromText(text)
+        }
+    }
+
+    private func conditionFromText(_ text: String) -> WeatherCondition {
+        let value = text.lowercased()
+        if value.contains("thunder") || value.contains("storm") || value.contains("雷") { return .thunderstorm }
+        if value.contains("snow") || value.contains("雪") { return .snow }
+        if value.contains("drizzle") || value.contains("毛毛雨") { return .drizzle }
+        if value.contains("rain") || value.contains("雨") { return .rain }
+        if value.contains("fog") || value.contains("mist") || value.contains("haze") || value.contains("雾") || value.contains("霾") { return .fog }
+        if value.contains("overcast") || value.contains("阴") { return .cloudy }
+        if value.contains("cloud") || value.contains("多云") { return .partlyCloudy }
+        if value.contains("clear") || value.contains("sunny") || value.contains("晴") { return .clear }
+        return .unknown
+    }
+
+    private func readSystemWeather() -> WeatherSnapshot? {
+        if let cached = readWeatherCache() { return cached }
+        return parseWeatherText(readWeatherAppAccessibilityTree())
     }
 
     private func geocodeOpenMeteo(city: String) -> (lat: Double, lon: Double)? {

@@ -10,6 +10,7 @@ mkdir -p "$MODULE_CACHE"
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" swiftc -O -module-cache-path "$MODULE_CACHE" \
   -framework Cocoa \
   -framework ImageIO \
+  -framework Security \
   -framework UniformTypeIdentifiers \
   "$PROJECT_DIR"/Sources/HermesDashboard/*.swift \
   -o "$APP_DIR/Contents/MacOS/HermesDashboard"

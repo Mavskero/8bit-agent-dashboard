@@ -199,7 +199,9 @@ final class DashboardView: NSView {
             x: temperaturePoint.x + temperaturePosition.x - DashboardStyleKey.temperature.defaultPosition.x,
             y: temperaturePoint.y + temperaturePosition.y - DashboardStyleKey.temperature.defaultPosition.y
         )
-        let weatherLabel = model.weather.condition.displayName
+        let weatherLabel = [model.weather.condition.displayName, model.weather.attribution]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
         if !weatherLabel.isEmpty {
             let weatherStyle = model.styles.style(for: .weatherCity)
             let cityPoint = CGPoint(

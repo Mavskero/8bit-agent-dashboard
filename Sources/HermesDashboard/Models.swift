@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import Security
 
 enum DashboardDisplayPreference {
     private static let displayIDKey = "preferredDisplayID"
@@ -404,6 +405,127 @@ enum RuntimeSource: String, CaseIterable {
     }
 }
 
+enum WeatherSource: String, CaseIterable, Codable {
+    case qweather
+    case openMeteo
+    case macOSWeather
+
+    var displayName: String {
+        switch self {
+        case .qweather: return "QWeather / 和风天气"
+        case .openMeteo: return "Open-Meteo"
+        case .macOSWeather: return "macOS Weather"
+        }
+    }
+}
+
+private enum WeatherCredentialStore {
+    private static let service = "com.hermes.dashboard.qweather"
+    private static let account = "api-key"
+
+    static func loadAPIKey() -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let value = String(data: data, encoding: .utf8) else { return "" }
+        return value
+    }
+
+    static func saveAPIKey(_ value: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        guard !value.isEmpty else {
+            SecItemDelete(query as CFDictionary)
+            return
+        }
+        let data = Data(value.utf8)
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecItemNotFound {
+            var newItem = query
+            newItem[kSecValueData as String] = data
+            newItem[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(newItem as CFDictionary, nil)
+        }
+    }
+}
+
+struct WeatherSettings: Codable, Equatable {
+    var source: WeatherSource
+    var apiHost: String
+    var apiKey: String
+    var city: String
+    var refreshInterval: TimeInterval
+
+    private enum CodingKeys: String, CodingKey {
+        case source, apiHost, city, refreshInterval
+    }
+
+    init(source: WeatherSource, apiHost: String, apiKey: String, city: String, refreshInterval: TimeInterval) {
+        self.source = source
+        self.apiHost = apiHost
+        self.apiKey = apiKey
+        self.city = city
+        self.refreshInterval = refreshInterval
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decodeIfPresent(WeatherSource.self, forKey: .source) ?? .qweather
+        apiHost = try container.decodeIfPresent(String.self, forKey: .apiHost) ?? ""
+        city = try container.decodeIfPresent(String.self, forKey: .city) ?? "Fuzhou"
+        refreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .refreshInterval) ?? 1800
+        apiKey = ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        try container.encode(apiHost, forKey: .apiHost)
+        try container.encode(city, forKey: .city)
+        try container.encode(refreshInterval, forKey: .refreshInterval)
+    }
+
+    static let defaults = WeatherSettings(
+        source: .qweather,
+        apiHost: "",
+        apiKey: "",
+        city: "Fuzhou",
+        refreshInterval: 1800
+    )
+
+    static func load() -> WeatherSettings {
+        var value: WeatherSettings
+        if let data = UserDefaults.standard.data(forKey: "weatherSettings"),
+           let stored = try? JSONDecoder().decode(WeatherSettings.self, from: data) {
+            value = stored
+        } else {
+            value = .defaults
+            if let legacyCity = UserDefaults.standard.string(forKey: "weatherCity"), !legacyCity.isEmpty {
+                value.city = legacyCity
+            }
+        }
+        value.apiKey = WeatherCredentialStore.loadAPIKey()
+        return value
+    }
+
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: "weatherSettings")
+        }
+        WeatherCredentialStore.saveAPIKey(apiKey)
+    }
+}
+
 struct ProviderSettings: Codable, Equatable {
     var name: String
     var baseURL: String
@@ -515,12 +637,22 @@ struct WeatherSnapshot {
     var condition: WeatherCondition
     var location: String
     var isLive: Bool
+    var attribution: String
+
+    init(temperature: String, condition: WeatherCondition, location: String, isLive: Bool, attribution: String = "") {
+        self.temperature = temperature
+        self.condition = condition
+        self.location = location
+        self.isLive = isLive
+        self.attribution = attribution
+    }
 
     static let demo = WeatherSnapshot(
         temperature: "24°C",
         condition: .partlyCloudy,
         location: "",
-        isLive: false
+        isLive: false,
+        attribution: ""
     )
 }
 
@@ -646,8 +778,9 @@ final class DashboardModel: NSObject {
     private(set) var styles: DashboardStyles
     private(set) var layout: DashboardLayout
     private(set) var providerSettings: ProviderSettings
-    private(set) var weatherCity: String
+    private(set) var weatherSettings: WeatherSettings
     private(set) var assetStore: DashboardAssetStore
+    var weatherCity: String { weatherSettings.city }
     var onChange: (() -> Void)?
 
     var runtimeSource: RuntimeSource {
@@ -662,15 +795,12 @@ final class DashboardModel: NSObject {
         static let wallpaperPath = "wallpaperPath"
         static let wallpaperCleared = "wallpaperCleared"
         static let assetFolderPath = "assetFolderPath"
-        static let weatherCity = "weatherCity"
         static let didPreferHermesRuntime = "didPreferHermesRuntime"
     }
 
     private static var bundledWallpaperPath: String? {
         Bundle.main.url(forResource: "kirby_s_chill_land", withExtension: "gif")?.path
     }
-
-    private static let defaultWeatherCity = "Fuzhou"
 
     private let weatherService = SystemWeatherService()
     private let musicService = AppleMusicService()
@@ -701,7 +831,7 @@ final class DashboardModel: NSObject {
         styles = DashboardStyles.load()
         layout = DashboardLayout.load()
         providerSettings = ProviderSettings.load()
-        weatherCity = UserDefaults.standard.string(forKey: Keys.weatherCity) ?? Self.defaultWeatherCity
+        weatherSettings = WeatherSettings.load()
         assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)) ?? Bundle.main.resourceURL)
         super.init()
     }
@@ -780,10 +910,15 @@ final class DashboardModel: NSObject {
         notifyChange()
     }
 
-    func updateWeatherCity(_ city: String) {
-        weatherCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
-        if weatherCity.isEmpty { UserDefaults.standard.removeObject(forKey: Keys.weatherCity) }
-        else { UserDefaults.standard.set(weatherCity, forKey: Keys.weatherCity) }
+    func updateWeatherSettings(_ settings: WeatherSettings) {
+        var updated = settings
+        updated.apiHost = updated.apiHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.apiKey = updated.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.city = updated.city.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.refreshInterval = min(max(updated.refreshInterval, 60), 86_400)
+        weatherSettings = updated
+        updated.save()
+        scheduleWeatherTimer()
         refreshWeather()
     }
 
@@ -799,7 +934,7 @@ final class DashboardModel: NSObject {
     }
 
     private func refreshWeather() {
-        weatherService.fetch(city: weatherCity) { [weak self] snapshot in
+        weatherService.fetch(settings: weatherSettings) { [weak self] snapshot in
             guard let self else { return }
             self.weather = snapshot
             self.notifyChange()
@@ -833,7 +968,8 @@ final class DashboardModel: NSObject {
 
     private func scheduleWeatherTimer() {
         weatherTimer?.invalidate()
-        weatherTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+        let interval = min(max(weatherSettings.refreshInterval, 60), 86_400)
+        weatherTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.refreshWeather()
         }
     }
@@ -878,20 +1014,20 @@ final class DashboardAssetStore {
         let names: [String]
         switch condition {
         case .clear:
-            names = isNight ? ["weather-clear-night", "weather-clear", "weather"] : ["weather-clear", "weather"]
+            names = isNight ? ["07-moon", "weather-clear-night", "weather-clear", "weather"] : ["03-sun", "weather-clear", "weather"]
         case .partlyCloudy:
             names = isNight
-                ? ["weather-partly-cloudy-night", "weather-partly-cloudy", "weather-cloudy", "weather"]
-                : ["weather-partly-cloudy", "weather-cloudy", "weather"]
-        case .cloudy: names = ["weather-cloudy", "weather"]
-        case .fog: names = ["weather-fog", "weather-cloudy", "weather"]
-        case .drizzle: names = ["weather-drizzle", "weather-rain", "weather"]
-        case .rain: names = ["weather-rain", "weather"]
-        case .snow: names = ["weather-snow", "weather"]
-        case .thunderstorm: names = ["weather-storm", "weather-rain", "weather"]
-        case .unknown: names = ["weather", "weather-clear"]
+                ? ["04-partly-cloudy", "weather-partly-cloudy-night", "weather-partly-cloudy", "weather-cloudy", "weather"]
+                : ["04-partly-cloudy", "weather-partly-cloudy", "weather-cloudy", "weather"]
+        case .cloudy: names = ["06-cloud", "weather-cloudy", "weather"]
+        case .fog: names = ["06-cloud", "weather-fog", "weather-cloudy", "weather"]
+        case .drizzle: names = ["08-showers", "weather-drizzle", "weather-rain", "weather"]
+        case .rain: names = ["01-rain", "weather-rain", "weather"]
+        case .snow: names = ["10-snowflake", "weather-snow", "weather"]
+        case .thunderstorm: names = ["02-thunderstorm", "weather-storm", "weather-rain", "weather"]
+        case .unknown: names = ["03-sun", "weather", "weather-clear"]
         }
-        return image(names: names, subfolders: ["weather", "icons"], at: time)
+        return image(names: names, subfolders: ["WeatherAssets/Static", "weather", "icons"], at: time)
     }
 
     func agentImage(state: AgentState, at time: TimeInterval) -> CGImage? {

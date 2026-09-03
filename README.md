@@ -36,6 +36,8 @@ open build/HermesDashboard.app
 
 ## 可替换天气与 Agent 图标
 
+应用默认使用 `Resources/WeatherAssets/Static` 中的 1254×1254 透明 PNG 天气图标，并按晴天、夜晚、多云、阴天、雾、毛毛雨、雨、雪和雷暴状态自动切换。构建脚本会把整套资源复制到 App Bundle。
+
 在设置中选择 `WEATHER / AGENT ASSET FOLDER`，程序会读取用户指定目录下的 PNG、JPG 或 GIF：
 
 ```text
@@ -54,7 +56,9 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。TeamoRouter 默认请求为 `https://teamorouter.com/v1/billing/balance`，使用环境变量 `OPENAI_API_KEY` 作为 Bearer token；余额以美元显示（例如 `$20.90`），启动时立即获取一次，之后按间隔刷新，请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距，`ICON / TITLE GAP` 控制行内图标与标题的间距。
 
-`WEATHER CITY` 可指定 `wttr.in` 查询城市；留空时继续使用 macOS Weather 缓存/降级数据。仪表盘温度旁显示当前天气条件英文：`CLEAR`、`PARTLY CLOUDY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
+`Weather Settings…` 可以选择天气源。默认使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
+
+天气源也可以切换为 Open-Meteo 或 macOS Weather。城市支持名称、LocationID 或经纬度；天气请求失败时继续使用 macOS Weather 缓存/辅助功能数据和内置降级值。仪表盘温度旁显示当前天气条件英文：`CLEAR`、`PARTLY CLOUDY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
 
 设置窗口可以切换 Codex Desktop 和 Hermes Agent。程序会按下面的顺序查找状态文件：
 

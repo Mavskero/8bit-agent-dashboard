@@ -11,11 +11,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let wallpaperLabel = NSTextField(labelWithString: "No GIF selected")
     private let assetFolderLabel = NSTextField(labelWithString: "Use built-in pixel icons")
     private let statusPathLabel = NSTextField(labelWithString: "")
-    private let weatherCityField = NSTextField(string: "")
     private var styleRows: [DashboardStyleKey: StyleRow] = [:]
     private var availableScreens: [NSScreen] = []
     private var layoutController: LayoutSettingsWindowController?
     private var providerController: ProviderSettingsWindowController?
+    private var weatherController: WeatherSettingsWindowController?
 
     init(model: DashboardModel, parentWindow: NSWindow?, onDisplayChanged: @escaping (NSScreen) -> Void) {
         self.model = model
@@ -88,16 +88,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         content.addSubview(displayPopup)
         reloadDisplays()
 
-        let weatherCityLabel = makeLabel("WEATHER CITY")
-        weatherCityLabel.frame = NSRect(x: 730, y: 606, width: 140, height: 18)
-        content.addSubview(weatherCityLabel)
-        weatherCityField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        weatherCityField.placeholderString = "Auto / city"
-        weatherCityField.stringValue = model.weatherCity
-        weatherCityField.frame = NSRect(x: 730, y: 578, width: 140, height: 26)
-        weatherCityField.target = self
-        weatherCityField.action = #selector(weatherCityChanged(_:))
-        content.addSubview(weatherCityField)
+        let weatherLabel = makeLabel("WEATHER SOURCE")
+        weatherLabel.frame = NSRect(x: 730, y: 606, width: 180, height: 18)
+        content.addSubview(weatherLabel)
+        addButton("Weather Settings…", x: 730, y: 578, width: 150, action: #selector(showWeatherSettings(_:)), to: content)
 
         let wallpaperTitle = makeLabel("GIF WALLPAPER")
         wallpaperTitle.frame = NSRect(x: 28, y: 540, width: 240, height: 20)
@@ -195,8 +189,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         providerController?.showWindow(nil)
     }
 
-    @objc private func weatherCityChanged(_ sender: NSTextField) {
-        model.updateWeatherCity(sender.stringValue)
+    @objc private func showWeatherSettings(_ sender: NSButton) {
+        if weatherController == nil { weatherController = WeatherSettingsWindowController(model: model, parentWindow: window) }
+        weatherController?.showWindow(nil)
     }
 
     @objc private func sourceChanged(_ sender: NSPopUpButton) {
@@ -546,6 +541,143 @@ private final class StyleRow: NSView {
 
     private func format(_ value: CGFloat) -> String {
         String(format: "%.2f", Double(value)).replacingOccurrences(of: ".00", with: "")
+    }
+}
+
+private final class WeatherSettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let model: DashboardModel
+    private weak var parentWindow: NSWindow?
+    private let sourcePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let apiHostField = NSTextField(string: "")
+    private let apiKeyField = NSSecureTextField(string: "")
+    private let cityField = NSTextField(string: "")
+    private let refreshField = NSTextField(string: "")
+
+    init(model: DashboardModel, parentWindow: NSWindow?) {
+        self.model = model
+        self.parentWindow = parentWindow
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 430), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.title = "Weather Source Settings"
+        panel.isFloatingPanel = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
+        super.init(window: panel)
+        panel.delegate = self
+        buildContent()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func showWindow(_ sender: Any?) {
+        reloadFields()
+        super.showWindow(sender)
+        NSApp.activate(ignoringOtherApps: true)
+        if let panel = window {
+            if let parentWindow, panel.parent == nil { parentWindow.addChildWindow(panel, ordered: .above) }
+            panel.center()
+            panel.orderFrontRegardless()
+            panel.makeKey()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let panel = window else { return }
+        parentWindow?.removeChildWindow(panel)
+        parentWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func buildContent() {
+        guard let content = window?.contentView else { return }
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
+
+        let title = makeLabel("WEATHER SOURCE", size: 18, bold: true)
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
+        title.frame = NSRect(x: 28, y: 384, width: 560, height: 26)
+        content.addSubview(title)
+
+        addLabel("Source", y: 340, to: content)
+        sourcePopup.addItems(withTitles: WeatherSource.allCases.map(\.displayName))
+        sourcePopup.frame = NSRect(x: 220, y: 336, width: 380, height: 28)
+        sourcePopup.target = self
+        sourcePopup.action = #selector(sourceChanged(_:))
+        content.addSubview(sourcePopup)
+
+        addLabel("QWeather API Host", y: 296, to: content)
+        configure(field: apiHostField, y: 292, placeholder: "abcxyz.qweatherapi.com", secure: false, in: content)
+        addLabel("QWeather API KEY", y: 252, to: content)
+        configure(field: apiKeyField, y: 248, placeholder: "Stored in macOS Keychain", secure: true, in: content)
+        addLabel("City / Location", y: 208, to: content)
+        configure(field: cityField, y: 204, placeholder: "Fuzhou / 101230101 / 119.30,26.08", secure: false, in: content)
+        addLabel("Refresh interval (min)", y: 164, to: content)
+        configure(field: refreshField, y: 160, placeholder: "30", secure: false, in: content)
+
+        let note = NSTextField(wrappingLabelWithString: "QWeather is the default source. Copy your dedicated API Host from QWeather Console → Settings and create an API KEY credential under Project Management. The key is kept in macOS Keychain; the dashboard refreshes immediately after Apply.")
+        note.font = NSFont.systemFont(ofSize: 11)
+        note.textColor = NSColor.secondaryLabelColor
+        note.frame = NSRect(x: 28, y: 68, width: 572, height: 70)
+        content.addSubview(note)
+
+        let apply = NSButton(title: "Apply & Refresh", target: self, action: #selector(apply(_:)))
+        apply.bezelStyle = .rounded
+        apply.frame = NSRect(x: 470, y: 24, width: 130, height: 28)
+        content.addSubview(apply)
+        reloadFields()
+    }
+
+    private func makeLabel(_ text: String, size: CGFloat, bold: Bool) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.monospacedSystemFont(ofSize: size, weight: bold ? .bold : .regular)
+        label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
+        return label
+    }
+
+    private func addLabel(_ text: String, y: CGFloat, to view: NSView) {
+        let label = makeLabel(text, size: 11, bold: true)
+        label.frame = NSRect(x: 28, y: y, width: 185, height: 18)
+        view.addSubview(label)
+    }
+
+    private func configure(field: NSTextField, y: CGFloat, placeholder: String, secure: Bool, in view: NSView) {
+        field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        field.placeholderString = placeholder
+        field.frame = NSRect(x: 220, y: y, width: 380, height: 26)
+        view.addSubview(field)
+    }
+
+    private func reloadFields() {
+        let settings = model.weatherSettings
+        sourcePopup.selectItem(at: WeatherSource.allCases.firstIndex(of: settings.source) ?? 0)
+        apiHostField.stringValue = settings.apiHost
+        apiKeyField.stringValue = settings.apiKey
+        cityField.stringValue = settings.city
+        refreshField.stringValue = String(Int(settings.refreshInterval / 60))
+        updateFieldAvailability()
+    }
+
+    @objc private func sourceChanged(_ sender: NSPopUpButton) {
+        updateFieldAvailability()
+    }
+
+    private func updateFieldAvailability() {
+        let usesQWeather = sourcePopup.indexOfSelectedItem == 0
+        apiHostField.isEnabled = usesQWeather
+        apiKeyField.isEnabled = usesQWeather
+    }
+
+    @objc private func apply(_ sender: NSButton) {
+        var settings = model.weatherSettings
+        settings.source = WeatherSource.allCases[sourcePopup.indexOfSelectedItem]
+        settings.apiHost = apiHostField.stringValue
+        settings.apiKey = apiKeyField.stringValue
+        settings.city = cityField.stringValue
+        let minutes = Double(refreshField.stringValue) ?? settings.refreshInterval / 60
+        settings.refreshInterval = minutes * 60
+        model.updateWeatherSettings(settings)
+        window?.close()
     }
 }
 
