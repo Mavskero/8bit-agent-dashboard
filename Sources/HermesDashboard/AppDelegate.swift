@@ -4,7 +4,7 @@ import CoreText
 enum PixelFontRegistrar {
     static func registerBundledFonts() {
         guard let resourceURL = Bundle.main.resourceURL else { return }
-        for filename in ["Silkscreen-Regular.ttf", "Silkscreen-Bold.ttf"] {
+        for filename in ["Silkscreen-Regular.ttf", "Silkscreen-Bold.ttf", "Pixelon.ttf"] {
             let url = resourceURL.appendingPathComponent("Fonts", isDirectory: true).appendingPathComponent(filename)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             _ = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)

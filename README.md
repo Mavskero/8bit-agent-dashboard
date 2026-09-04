@@ -22,6 +22,7 @@ open build/HermesDashboard.app
 设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather Condition、Now Playing、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等文字。每一项都支持 X/Y 画布坐标、字体、字号、颜色和平滑渲染开关；面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
+- `Pixelon`：随 App 打包的像素字体，项目内使用该字体的默认文字无需依赖系统预装字体
 - `Pixel Grid (built-in)`：兼容旧版本的内置 8bit 字体
 - 系统已安装字体，或用 `Import Font…` 导入 `.ttf` / `.otf` / `.ttc`
 - 字号
@@ -57,6 +58,8 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。TeamoRouter 默认请求为 `https://teamorouter.com/v1/billing/balance`，使用环境变量 `OPENAI_API_KEY` 作为 Bearer token；余额以美元显示（例如 `$20.90`），启动时立即获取一次，之后按间隔刷新，请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距，`ICON / TITLE GAP` 控制行内图标与标题的间距。
 
 `Weather Settings…` 可以选择天气源。默认使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
+
+设置数据位于项目目录之外：普通偏好保存在 `~/Library/Preferences/com.hermes.dashboard.plist`，QWeather API KEY 保存在 macOS 钥匙串，导入字体保存在 `~/Library/Application Support/Hermes Dashboard/Fonts`。删除项目源码或覆盖安装同一 Bundle ID 的 App 不会清除这些数据。
 
 天气源也可以切换为 Open-Meteo 或 macOS Weather。城市支持名称、LocationID 或经纬度；天气请求失败时继续使用 macOS Weather 缓存/辅助功能数据和内置降级值。仪表盘温度旁显示当前天气条件英文：`CLEAR`、`PARTLY CLOUDY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
 
