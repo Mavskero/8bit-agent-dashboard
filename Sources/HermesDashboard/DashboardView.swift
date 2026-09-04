@@ -182,7 +182,7 @@ final class DashboardView: NSView {
         // the separator is hidden, so the minute digits never jump.
         drawText(minute, key: .clock, at: CGPoint(x: clockX + hourWidth + colonWidth, y: 48), context: context)
         let weatherRect = CGRect(x: 560, y: 48, width: 128, height: 128)
-        if let weatherImage = model.assetStore.weatherImage(condition: model.weather.condition, at: CACurrentMediaTime()) {
+        if let weatherImage = model.assetStore.weatherImage(condition: model.weather.condition, iconSet: model.weatherSettings.iconSet, at: CACurrentMediaTime()) {
             PixelPainter.drawAsset(weatherImage, in: weatherRect, context: context)
         } else {
             PixelPainter.drawWeatherIcon(at: CGPoint(x: 572, y: 48), scale: 8, condition: model.weather.condition, context: context)

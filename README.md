@@ -57,7 +57,7 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。TeamoRouter 默认请求为 `https://teamorouter.com/v1/billing/balance`，使用环境变量 `OPENAI_API_KEY` 作为 Bearer token；余额以美元显示（例如 `$20.90`），启动时立即获取一次，之后按间隔刷新，请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距，`ICON / TITLE GAP` 控制行内图标与标题的间距。
 
-`Weather Settings…` 可以选择天气源。默认使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
+`Weather Settings…` 可以选择天气源和天气图标包。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
 
 设置数据位于项目目录之外：普通偏好保存在 `~/Library/Preferences/com.hermes.dashboard.plist`，QWeather API KEY 保存在 macOS 钥匙串，导入字体保存在 `~/Library/Application Support/Hermes Dashboard/Fonts`。删除项目源码或覆盖安装同一 Bundle ID 的 App 不会清除这些数据。
 

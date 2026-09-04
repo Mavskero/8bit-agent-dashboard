@@ -137,7 +137,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。
 - `wallpaperCleared`：用户明确清除 Bundle 默认壁纸后的标记。
 - `providerSettings`：provider 名称、余额请求设置、刷新间隔和最后成功余额。
-- `weatherSettings`：天气源、QWeather API Host、城市和刷新间隔；QWeather API KEY 单独保存在 macOS 钥匙串；`DashboardLayout.runtimeTitleSpacing` / `runtimeIconTitleSpacing` / `runtimeIcons`：Runtime 间距和图标设置。
+- `weatherSettings`：天气源、天气图标包、QWeather API Host、城市和刷新间隔；QWeather API KEY 单独保存在 macOS 钥匙串；`DashboardLayout.runtimeTitleSpacing` / `runtimeIconTitleSpacing` / `runtimeIcons`：Runtime 间距和图标设置。
 
 `DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417、420 底部 y 值会迁移到 416；自定义的其他坐标保持不变。
 

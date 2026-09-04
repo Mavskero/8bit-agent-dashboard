@@ -419,6 +419,18 @@ enum WeatherSource: String, CaseIterable, Codable {
     }
 }
 
+enum WeatherIconSet: String, CaseIterable, Codable {
+    case standard
+    case referenceStyle
+
+    var displayName: String {
+        switch self {
+        case .standard: return "Standard"
+        case .referenceStyle: return "Reference style"
+        }
+    }
+}
+
 private enum WeatherCredentialStore {
     private static let service = "com.hermes.dashboard.qweather"
     private static let account = "api-key"
@@ -461,17 +473,19 @@ private enum WeatherCredentialStore {
 
 struct WeatherSettings: Codable, Equatable {
     var source: WeatherSource
+    var iconSet: WeatherIconSet
     var apiHost: String
     var apiKey: String
     var city: String
     var refreshInterval: TimeInterval
 
     private enum CodingKeys: String, CodingKey {
-        case source, apiHost, city, refreshInterval
+        case source, iconSet, apiHost, city, refreshInterval
     }
 
-    init(source: WeatherSource, apiHost: String, apiKey: String, city: String, refreshInterval: TimeInterval) {
+    init(source: WeatherSource, iconSet: WeatherIconSet, apiHost: String, apiKey: String, city: String, refreshInterval: TimeInterval) {
         self.source = source
+        self.iconSet = iconSet
         self.apiHost = apiHost
         self.apiKey = apiKey
         self.city = city
@@ -481,6 +495,7 @@ struct WeatherSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         source = try container.decodeIfPresent(WeatherSource.self, forKey: .source) ?? .qweather
+        iconSet = try container.decodeIfPresent(WeatherIconSet.self, forKey: .iconSet) ?? .standard
         apiHost = try container.decodeIfPresent(String.self, forKey: .apiHost) ?? ""
         city = try container.decodeIfPresent(String.self, forKey: .city) ?? "Fuzhou"
         refreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .refreshInterval) ?? 1800
@@ -490,6 +505,7 @@ struct WeatherSettings: Codable, Equatable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(source, forKey: .source)
+        try container.encode(iconSet, forKey: .iconSet)
         try container.encode(apiHost, forKey: .apiHost)
         try container.encode(city, forKey: .city)
         try container.encode(refreshInterval, forKey: .refreshInterval)
@@ -497,6 +513,7 @@ struct WeatherSettings: Codable, Equatable {
 
     static let defaults = WeatherSettings(
         source: .qweather,
+        iconSet: .standard,
         apiHost: "",
         apiKey: "",
         city: "Fuzhou",
@@ -1008,7 +1025,7 @@ final class DashboardAssetStore {
         self.folderURL = folderURL
     }
 
-    func weatherImage(condition: WeatherCondition, at time: TimeInterval) -> CGImage? {
+    func weatherImage(condition: WeatherCondition, iconSet: WeatherIconSet, at time: TimeInterval) -> CGImage? {
         let hour = Calendar.current.component(.hour, from: Date())
         let isNight = hour < 6 || hour >= 18
         let names: [String]
@@ -1027,7 +1044,10 @@ final class DashboardAssetStore {
         case .thunderstorm: names = ["02-thunderstorm", "weather-storm", "weather-rain", "weather"]
         case .unknown: names = ["03-sun", "weather", "weather-clear"]
         }
-        return image(names: names, subfolders: ["WeatherAssets/Static", "weather", "icons"], at: time)
+        let bundledFolders = iconSet == .referenceStyle
+            ? ["WeatherAssets/Alternate/ReferenceStyle", "WeatherAssets/Static"]
+            : ["WeatherAssets/Static"]
+        return image(names: names, subfolders: bundledFolders + ["weather", "icons"], at: time)
     }
 
     func agentImage(state: AgentState, at time: TimeInterval) -> CGImage? {

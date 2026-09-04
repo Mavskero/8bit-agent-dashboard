@@ -4,6 +4,7 @@ Pixel-art weather artwork with transparent backgrounds. Static and animated file
 
 - `Static/`: 10 PNG icons, each 1254 × 1254 pixels, RGBA transparency.
 - `Animated/`: 10 GIF icons, each 256 × 256 pixels, 3 frames, transparent background, infinite loop.
+- `Alternate/ReferenceStyle/`: 9 approved 1254 × 1254 transparent PNG alternatives based on the supplied crescent-moon reference. Clear night falls back to `Static/07-moon.png`.
 
 | Filename stem | Weather | Animation | Loop duration |
 | --- | --- | --- | --- |
@@ -20,4 +21,4 @@ Pixel-art weather artwork with transparent backgrounds. Static and animated file
 
 Created from the user-provided weather reference using built-in imagegen. Background cleanup and GIF assembly used ImageMagick. PNG alpha, GIF frame count, dimensions, distinct frames, and infinite-loop metadata were checked before import.
 
-These are standalone assets; application code is not changed by this import.
+Choose `Reference style` under Weather Settings → Weather icon set to use the alternate artwork. Missing alternate artwork falls back to `Static/`.

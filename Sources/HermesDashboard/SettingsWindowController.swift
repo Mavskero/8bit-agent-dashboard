@@ -548,6 +548,7 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
     private let model: DashboardModel
     private weak var parentWindow: NSWindow?
     private let sourcePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let iconSetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let apiHostField = NSTextField(string: "")
     private let apiKeyField = NSSecureTextField(string: "")
     private let cityField = NSTextField(string: "")
@@ -556,7 +557,7 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 430), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 480), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Weather Source Settings"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
@@ -596,24 +597,29 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
 
         let title = makeLabel("WEATHER SOURCE", size: 18, bold: true)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 384, width: 560, height: 26)
+        title.frame = NSRect(x: 28, y: 434, width: 560, height: 26)
         content.addSubview(title)
 
-        addLabel("Source", y: 340, to: content)
+        addLabel("Source", y: 390, to: content)
         sourcePopup.addItems(withTitles: WeatherSource.allCases.map(\.displayName))
-        sourcePopup.frame = NSRect(x: 220, y: 336, width: 380, height: 28)
+        sourcePopup.frame = NSRect(x: 220, y: 386, width: 380, height: 28)
         sourcePopup.target = self
         sourcePopup.action = #selector(sourceChanged(_:))
         content.addSubview(sourcePopup)
 
-        addLabel("QWeather API Host", y: 296, to: content)
-        configure(field: apiHostField, y: 292, placeholder: "abcxyz.qweatherapi.com", secure: false, in: content)
-        addLabel("QWeather API KEY", y: 252, to: content)
-        configure(field: apiKeyField, y: 248, placeholder: "Stored in macOS Keychain", secure: true, in: content)
-        addLabel("City / Location", y: 208, to: content)
-        configure(field: cityField, y: 204, placeholder: "Fuzhou / 101230101 / 119.30,26.08", secure: false, in: content)
-        addLabel("Refresh interval (min)", y: 164, to: content)
-        configure(field: refreshField, y: 160, placeholder: "30", secure: false, in: content)
+        addLabel("Weather icon set", y: 346, to: content)
+        iconSetPopup.addItems(withTitles: WeatherIconSet.allCases.map(\.displayName))
+        iconSetPopup.frame = NSRect(x: 220, y: 342, width: 380, height: 28)
+        content.addSubview(iconSetPopup)
+
+        addLabel("QWeather API Host", y: 302, to: content)
+        configure(field: apiHostField, y: 298, placeholder: "abcxyz.qweatherapi.com", in: content)
+        addLabel("QWeather API KEY", y: 258, to: content)
+        configure(field: apiKeyField, y: 254, placeholder: "Stored in macOS Keychain", in: content)
+        addLabel("City / Location", y: 214, to: content)
+        configure(field: cityField, y: 210, placeholder: "Fuzhou / 101230101 / 119.30,26.08", in: content)
+        addLabel("Refresh interval (min)", y: 170, to: content)
+        configure(field: refreshField, y: 166, placeholder: "30", in: content)
 
         let note = NSTextField(wrappingLabelWithString: "QWeather is the default source. Copy your dedicated API Host from QWeather Console → Settings and create an API KEY credential under Project Management. The key is kept in macOS Keychain; the dashboard refreshes immediately after Apply.")
         note.font = NSFont.systemFont(ofSize: 11)
@@ -641,7 +647,7 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
         view.addSubview(label)
     }
 
-    private func configure(field: NSTextField, y: CGFloat, placeholder: String, secure: Bool, in view: NSView) {
+    private func configure(field: NSTextField, y: CGFloat, placeholder: String, in view: NSView) {
         field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         field.placeholderString = placeholder
         field.frame = NSRect(x: 220, y: y, width: 380, height: 26)
@@ -651,6 +657,7 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
     private func reloadFields() {
         let settings = model.weatherSettings
         sourcePopup.selectItem(at: WeatherSource.allCases.firstIndex(of: settings.source) ?? 0)
+        iconSetPopup.selectItem(at: WeatherIconSet.allCases.firstIndex(of: settings.iconSet) ?? 0)
         apiHostField.stringValue = settings.apiHost
         apiKeyField.stringValue = settings.apiKey
         cityField.stringValue = settings.city
@@ -671,6 +678,7 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
     @objc private func apply(_ sender: NSButton) {
         var settings = model.weatherSettings
         settings.source = WeatherSource.allCases[sourcePopup.indexOfSelectedItem]
+        settings.iconSet = WeatherIconSet.allCases[iconSetPopup.indexOfSelectedItem]
         settings.apiHost = apiHostField.stringValue
         settings.apiKey = apiKeyField.stringValue
         settings.city = cityField.stringValue
