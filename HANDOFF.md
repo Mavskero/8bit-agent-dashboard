@@ -52,6 +52,8 @@ killall HermesDashboard 2>/dev/null || true
 - Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
 - Plan Usage / OAuth 设置通过官方 Codex app-server 读取 ChatGPT `codex` 周用量窗口；显示套餐、周剩余百分比和下次重置倒计时，支持显示名称、bucket ID、Codex 路径和刷新间隔。OAuth token 由 Codex 管理，读取失败保留缓存值。
 - Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、套餐、周剩余额度、下次重置倒计时和上下文占用；额度按 >=50、20-49、<20 显示绿/黄/红。
+- Codex 来源会让左下角模块切换为 `CODEX AGENT`，读取当前 rollout 的 `Reasoning`、`CommandExecution`、`FileChange`、`Extension`、MCP 和 `AgentMessage` 条目。界面使用八种彩色动作标签、合并相邻同类事件，并逐字显示精简正文；不渲染长命令参数和原始工具输出。
+- Codex/Hermes 的最终结果都先交给本机 Ollama `qwen3.5:2b`，按 100 字以内纯文本提示词总结后才加入 `[OUTPUT]`。摘要运行在独立队列，失败时显示错误并回退到本地精简文本。
 - Runtime Status 七行默认图标来自 `Resources/RuntimeStatusIcons`：Model、Thinking、Fast mode、Plan、Plan balance、Next reset、Tokens。已确认的 `05-legacy-balance.png` 作为备用资源保留。Runtime Icons 设置可切回六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y。
 - `Weather Settings…` 默认选择和风天气 QWeather，可配置专属 API Host、API KEY、城市/LocationID/经纬度、刷新间隔，以及天气图标 X/Y 和 24–384 px 尺寸。API KEY 存入 macOS 钥匙串；也可切换 Open-Meteo 或 macOS Weather，失败时使用系统缓存/降级值。
 

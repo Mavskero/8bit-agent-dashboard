@@ -22,6 +22,11 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Hermes Dashboard reads the currently playing Apple Music track and the macOS Weather app display.</string>
 	<key>NSHumanReadableCopyright</key>

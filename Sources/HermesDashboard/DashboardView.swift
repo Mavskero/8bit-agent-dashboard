@@ -334,7 +334,8 @@ final class DashboardView: NSView {
         let agentOrigin = model.layout.hermesAgent
         let agentRect = CGRect(x: agentOrigin.x, y: agentOrigin.y, width: 584, height: bottomModuleHeight)
         PixelPainter.drawFrame(agentRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.agentOpacity))
-        drawText("HERMES AGENT", key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
+        let agentTitle = model.runtimeSource == .codex ? "CODEX AGENT" : "HERMES AGENT"
+        drawText(agentTitle, key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
         let currentState = model.runtime.agentState
         if let agentImage = model.assetStore.agentImage(state: currentState, at: CACurrentMediaTime()) {
             PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 164), context: context)
@@ -398,21 +399,29 @@ final class DashboardView: NSView {
         let style = model.styles.style(for: .agentActivity)
         let lineHeight = max(style.pointSize + 6, 16)
         let maxLines = max(Int(rect.height / lineHeight), 1)
-        var lines: [(String, AgentActivityKind)] = []
-        for event in model.runtime.activityLog {
-            var eventStyle = style
-            eventStyle.colorHex = activityColor(for: event.kind).hexString
-            let wrapped = PixelPainter.wrappedLines(event.text, style: eventStyle, maxWidth: rect.width - 4, maxLines: 8)
-            for line in wrapped {
-                lines.append((line, event.kind))
+        var lines: [(text: String, kind: AgentActivityKind, startsEvent: Bool)] = []
+        for event in model.streamedActivityLog {
+            let formatted = "\(event.kind.tag) \(event.text)"
+            let wrapped = PixelPainter.wrappedLines(formatted, style: style, maxWidth: rect.width - 4, maxLines: 7)
+            for (index, line) in wrapped.enumerated() {
+                lines.append((line, event.kind, index == 0))
             }
         }
         let visible = Array(lines.suffix(maxLines))
         var y = rect.minY + 2
-        for (line, kind) in visible {
-            var eventStyle = style
-            eventStyle.colorHex = activityColor(for: kind).hexString
-            drawText(line, key: .agentActivity, at: CGPoint(x: rect.minX, y: y), context: context, style: eventStyle)
+        for line in visible {
+            if line.startsEvent, line.text.hasPrefix(line.kind.tag) {
+                var tagStyle = style
+                tagStyle.colorHex = activityColor(for: line.kind).hexString
+                drawText(line.kind.tag, key: .agentActivity, at: CGPoint(x: rect.minX, y: y), context: context, style: tagStyle)
+                let remainder = line.text.dropFirst(line.kind.tag.count).trimmingCharacters(in: .whitespaces)
+                if !remainder.isEmpty {
+                    let contentX = rect.minX + PixelPainter.textWidth(line.kind.tag + " ", style: style)
+                    drawText(String(remainder), key: .agentActivity, at: CGPoint(x: contentX, y: y), context: context, style: style)
+                }
+            } else {
+                drawText(line.text, key: .agentActivity, at: CGPoint(x: rect.minX, y: y), context: context, style: style)
+            }
             y += lineHeight
         }
         context.restoreGState()
@@ -422,9 +431,12 @@ final class DashboardView: NSView {
         switch kind {
         case .think: return PixelPalette.violet
         case .tool: return PixelPalette.cyan
+        case .files: return PixelPalette.orange
+        case .search: return PixelPalette.cyanDim
         case .result: return PixelPalette.green
         case .reply: return PixelPalette.cream
         case .status: return PixelPalette.yellow
+        case .error: return PixelPalette.red
         }
     }
 

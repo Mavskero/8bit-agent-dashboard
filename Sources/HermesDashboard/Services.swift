@@ -295,7 +295,103 @@ private final class ProcessRunner {
             return nil
         }
         let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard process.terminationStatus == 0 else { return nil }
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct LocalSummaryResult {
+    var text: String
+    var usedQwen: Bool
+}
+
+private final class LocalQwenSummaryService {
+    private let model = "qwen3.5:2b"
+    private var cache: [String: LocalSummaryResult] = [:]
+
+    func summarize(id: String, text: String) -> LocalSummaryResult {
+        if let cached = cache[id] { return cached }
+        let clippedInput = String(text.prefix(6_000))
+        let prompt = """
+        将输入内容总结成一段不超过100个中文字符的纯文本。
+
+        要求：
+        1. 保留对象、核心结论、关键数字以及异常或限制。
+        2. 优先说明发生了什么、结果如何、是否需要用户处理。
+        3. 不使用标题、Markdown、列表、换行和前缀。
+        4. 不解释总结过程，不添加原文没有的信息。
+        5. 如果内容没有异常，直接陈述结果。
+
+        输入内容：
+        \(clippedInput)
+        """
+        let output = requestSummary(prompt)
+        let cleaned = cleanSummary(output)
+        let result: LocalSummaryResult
+        if cleaned.isEmpty {
+            result = LocalSummaryResult(text: compactFallback(text), usedQwen: false)
+        } else {
+            result = LocalSummaryResult(text: String(cleaned.prefix(100)), usedQwen: true)
+        }
+        cache[id] = result
+        if cache.count > 32, let first = cache.keys.first { cache.removeValue(forKey: first) }
+        return result
+    }
+
+    private func requestSummary(_ prompt: String) -> String? {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/generate"),
+              let body = try? JSONSerialization.data(withJSONObject: [
+                "model": model,
+                "prompt": prompt,
+                "stream": false,
+                "think": false,
+                "keep_alive": "10m",
+                "options": ["temperature": 0.1, "num_predict": 120]
+              ]) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.timeoutInterval = 45
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let semaphore = DispatchSemaphore(value: 0)
+        var summary: String?
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let data, (response as? HTTPURLResponse)?.statusCode == 200,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            summary = object["response"] as? String
+        }
+        task.resume()
+        if semaphore.wait(timeout: .now() + 46) == .timedOut {
+            task.cancel()
+            return nil
+        }
+        return summary
+    }
+
+    private func cleanSummary(_ value: String?) -> String {
+        guard var text = value else { return "" }
+        if let expression = try? NSRegularExpression(pattern: "\u{001B}\\[[0-9;?]*[ -/]*[@-~]"), !text.isEmpty {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = expression.stringByReplacingMatches(in: text, range: range, withTemplate: "")
+        }
+        if let start = text.range(of: "<think>"), let end = text.range(of: "</think>", range: start.upperBound..<text.endIndex) {
+            text.removeSubrange(start.lowerBound..<end.upperBound)
+        }
+        text = text.replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: #"\[([^\]]+)\]\([^\)]+\)"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"^(?:总结|摘要)[：:]\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^[#*\-\s]+"#, with: "", options: .regularExpression)
+        while text.contains("  ") { text = text.replacingOccurrences(of: "  ", with: " ") }
+        return text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+    }
+
+    private func compactFallback(_ value: String) -> String {
+        let text = cleanSummary(value)
+        return text.isEmpty ? "任务已完成，但没有可显示的结果。" : String(text.prefix(100))
     }
 }
 
@@ -734,6 +830,7 @@ private struct CodexTaskIndexEntry: Decodable {
 
 private struct CodexSnapshot {
     var sessions: [SessionInfo]
+    var activityLog: [AgentActivityEvent]
     var agentState: AgentState
     var contextPercent: Int
     var model: String?
@@ -745,12 +842,52 @@ private struct CodexSnapshot {
 
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
+    private let summaryQueue = DispatchQueue(label: "hermes-dashboard.summary", qos: .utility)
+    private let qwenSummaryService = LocalQwenSummaryService()
+    private var completedSummaries: [String: LocalSummaryResult] = [:]
+    private var pendingSummaries = Set<String>()
 
     func fetch(source: RuntimeSource, completion: @escaping (RuntimeStatus) -> Void) {
         queue.async {
-            let status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
+            var status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
+            status = self.summarizeFinalOutput(in: status)
             DispatchQueue.main.async { completion(status) }
         }
+    }
+
+    private func summarizeFinalOutput(in status: RuntimeStatus) -> RuntimeStatus {
+        guard let finalIndex = status.activityLog.lastIndex(where: { $0.summarizeBeforeDisplay }) else { return status }
+        var updated = status
+        let finalEvent = updated.activityLog[finalIndex]
+        updated.activityLog.removeAll { $0.summarizeBeforeDisplay }
+        guard let result = completedSummaries[finalEvent.id] else {
+            updated.agentState = .thinking
+            updated.activityLog.append(AgentActivityEvent(id: "\(finalEvent.id):qwen-pending", kind: .status, text: "Qwen 3.5 2B 正在总结最终结果"))
+            if pendingSummaries.insert(finalEvent.id).inserted {
+                summaryQueue.async {
+                    let result = self.qwenSummaryService.summarize(id: finalEvent.id, text: finalEvent.text)
+                    self.queue.async {
+                        self.pendingSummaries.remove(finalEvent.id)
+                        self.completedSummaries[finalEvent.id] = result
+                        if self.completedSummaries.count > 32, let first = self.completedSummaries.keys.first {
+                            self.completedSummaries.removeValue(forKey: first)
+                        }
+                    }
+                }
+            }
+            return updated
+        }
+        let markerID = "\(finalEvent.id):qwen"
+        if result.usedQwen {
+            updated.activityLog.append(AgentActivityEvent(id: markerID, kind: .status, text: "Qwen 3.5 2B 已总结最终结果"))
+        } else {
+            updated.activityLog.append(AgentActivityEvent(id: markerID, kind: .error, text: "Qwen 3.5 2B 摘要失败，已使用本地精简结果"))
+        }
+        var summarized = finalEvent
+        summarized.text = result.text
+        summarized.summarizeBeforeDisplay = false
+        updated.activityLog.append(summarized)
+        return updated
     }
 
     private func read(source: RuntimeSource) -> RuntimeStatus? {
@@ -769,6 +906,7 @@ final class RuntimeStatusService {
             status.tokenPercent = codexSnapshot.contextPercent
             status.agentState = codexSnapshot.agentState
             status.sessions = codexSnapshot.sessions
+            status.activityLog = codexSnapshot.activityLog
             if let model = codexSnapshot.model { status.model = model }
             if let thinking = codexSnapshot.thinking { status.thinking = thinking.uppercased() }
             if let fastMode = codexSnapshot.fastMode { status.fastMode = fastMode }
@@ -918,7 +1056,7 @@ private struct HermesSnapshot {
         }
 
         let sessionID = current["id"] as? String ?? ""
-        let activityLog = readHermesActivity(dbPath: dbPath, sessionID: sessionID, fallback: current["last_activity_description"] as? String)
+        let activityLog = readHermesActivity(dbPath: dbPath, sessionID: sessionID, fallback: current["last_activity_description"] as? String, isComplete: agentState == .idle || agentState == .done)
         let used = (current["input_tokens"] as? NSNumber)?.doubleValue ?? 0
         let limit = hermesContextLimit(modelConfig: modelConfig, fallback: config.contextLength)
         let contextPercent = limit > 0 ? clamp(Int((used / limit * 100).rounded()), min: 0, max: 100) : sessions[0].contextPercent
@@ -951,13 +1089,14 @@ private struct HermesSnapshot {
         return fallback > 0 ? fallback : 256_000
     }
 
-    private func readHermesActivity(dbPath: String, sessionID: String, fallback: String?) -> [AgentActivityEvent] {
+    private func readHermesActivity(dbPath: String, sessionID: String, fallback: String?, isComplete: Bool) -> [AgentActivityEvent] {
         guard !sessionID.isEmpty else { return fallbackEvents(fallback) }
         let sql = """
-        SELECT role,
+        SELECT id,
+               role,
                tool_name,
                substr(COALESCE(reasoning, reasoning_content, ''), 1, 280) AS reasoning,
-               substr(COALESCE(content, ''), 1, 480) AS content,
+               substr(COALESCE(content, ''), 1, 12000) AS content,
                substr(COALESCE(tool_calls, ''), 1, 900) AS tool_calls
         FROM messages
         WHERE session_id = '\(sessionID.replacingOccurrences(of: "'", with: "''"))'
@@ -967,31 +1106,30 @@ private struct HermesSnapshot {
         """
         let rows = readSQLiteRows(path: dbPath, query: sql)
         var packets: [[AgentActivityEvent]] = []
-        var finalizedReply: AgentActivityEvent?
         var packed = 0
         for row in rows {
             var packet: [AgentActivityEvent] = []
+            let messageID = String(describing: row["id"] ?? "hermes-\(packed)")
             let role = (row["role"] as? String ?? "").lowercased()
             if role == "tool" {
                 let name = (row["tool_name"] as? String ?? "tool").trimmingCharacters(in: .whitespacesAndNewlines)
                 let snippet = compactActivityText(row["content"] as? String)
                 let failed = snippet.lowercased().contains("error") || snippet.lowercased().contains("exit_code\": 1") || snippet.contains("exit_code\":1")
-                let prefix = failed ? "ERR" : "OK"
-                let text = snippet.isEmpty ? "\(prefix)  \(name)" : "\(prefix)  \(name)  \(snippet)"
-                packet.append(AgentActivityEvent(kind: .result, text: text))
+                let text = snippet.isEmpty ? "\(name) 执行完成" : "\(name)：\(snippet)"
+                packet.append(AgentActivityEvent(id: "hermes:\(messageID):result", kind: failed ? .error : .result, text: text))
             } else if role == "assistant" {
                 let toolNames = functionNames(from: row["tool_calls"] as? String)
                 let think = compactActivityText(row["reasoning"] as? String)
-                let spoken = compactActivityText(row["content"] as? String, limit: 280)
+                let rawSpoken = row["content"] as? String ?? ""
+                let spoken = isComplete ? rawSpoken.trimmingCharacters(in: .whitespacesAndNewlines) : compactActivityText(rawSpoken, limit: 90)
                 if !spoken.isEmpty && toolNames.isEmpty {
-                    finalizedReply = AgentActivityEvent(kind: .reply, text: spoken)
-                    break
+                    packet.append(AgentActivityEvent(id: "hermes:\(messageID):output", kind: isComplete ? .reply : .status, text: spoken, summarizeBeforeDisplay: isComplete))
                 }
                 if !think.isEmpty {
-                    packet.append(AgentActivityEvent(kind: .think, text: "THINK  \(think)"))
+                    packet.append(AgentActivityEvent(id: "hermes:\(messageID):thinking", kind: .think, text: think))
                 }
                 if !toolNames.isEmpty {
-                    packet.append(AgentActivityEvent(kind: .tool, text: "TOOL  \(toolNames.joined(separator: "  "))"))
+                    packet.append(AgentActivityEvent(id: "hermes:\(messageID):tools", kind: .tool, text: "调用 \(toolNames.joined(separator: "、"))"))
                 }
             }
             if !packet.isEmpty {
@@ -999,9 +1137,6 @@ private struct HermesSnapshot {
                 packed += packet.count
             }
             if packed >= 16 { break }
-        }
-        if let finalizedReply {
-            return [finalizedReply]
         }
         packets.reverse()
         let events = packets.flatMap { $0 }
@@ -1012,7 +1147,7 @@ private struct HermesSnapshot {
     private func fallbackEvents(_ fallback: String?) -> [AgentActivityEvent] {
         let text = compactActivityText(fallback)
         if text.isEmpty { return [] }
-        return [AgentActivityEvent(kind: .status, text: text)]
+        return [AgentActivityEvent(id: "hermes:fallback:\(text)", kind: .status, text: text)]
     }
 
     private func compactActivityText(_ raw: String?, limit: Int = 90) -> String {
@@ -1024,6 +1159,7 @@ private struct HermesSnapshot {
             text = text.replacingOccurrences(of: "  ", with: " ")
         }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#-*`"))
         if text.hasPrefix("{") || text.hasPrefix("[") {
             if let name = functionNames(from: text).first { return name }
             let clipped = text.replacingOccurrences(of: "\"", with: "")
@@ -1154,9 +1290,25 @@ private struct HermesSnapshot {
                 let currentThreadID = catalogRows.first?["thread_id"] as? String
                 let currentState = currentThreadID.flatMap { states[$0] }
                 let metadata = readCodexRuntimeMetadata(state: currentState)
+                let activityLog = (currentState?["rollout_path"] as? String).map(readCodexActivity) ?? []
+                let latestKind = activityLog.last?.kind
+                let resolvedAgentState: AgentState
+                if sessions.contains(where: { $0.status == "RUNNING" }) {
+                    switch latestKind {
+                    case .think: resolvedAgentState = .thinking
+                    case .reply: resolvedAgentState = .outputting
+                    case .error: resolvedAgentState = .error
+                    default: resolvedAgentState = .working
+                    }
+                } else if latestKind == .error {
+                    resolvedAgentState = .error
+                } else {
+                    resolvedAgentState = agentState
+                }
                 return CodexSnapshot(
                     sessions: sessions,
-                    agentState: agentState,
+                    activityLog: activityLog,
+                    agentState: resolvedAgentState,
                     contextPercent: sessions[0].contextPercent,
                     model: metadata.model,
                     thinking: metadata.thinking,
@@ -1170,7 +1322,205 @@ private struct HermesSnapshot {
         let legacySessions = readLegacyCodexTasks()
         guard !legacySessions.isEmpty else { return nil }
         let metadata = readCodexRuntimeMetadata(state: nil)
-        return CodexSnapshot(sessions: legacySessions, agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
+        return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
+    }
+
+    private func readCodexActivity(_ path: String) -> [AgentActivityEvent] {
+        guard FileManager.default.fileExists(atPath: path),
+              let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else { return [] }
+        defer { try? handle.close() }
+        let end = (try? handle.seekToEnd()) ?? 0
+        let maxBytes: UInt64 = 8 * 1_024 * 1_024
+        let offset = end > maxBytes ? end - maxBytes : 0
+        handle.seek(toFileOffset: offset)
+        guard let data = try? handle.readToEnd(), var text = String(data: data, encoding: .utf8) else { return [] }
+        if offset > 0, let newline = text.firstIndex(of: "\n") {
+            text.removeSubrange(text.startIndex...newline)
+        }
+
+        var events: [AgentActivityEvent] = []
+        var seen = Set<String>()
+        for (lineIndex, line) in text.split(whereSeparator: \.isNewline).enumerated() {
+            guard line.utf8.count <= 524_288,
+                  let lineData = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let recordType = object["type"] as? String else { continue }
+            let payload = object["payload"] as? [String: Any] ?? [:]
+            if recordType == "event_msg", (payload["type"] as? String) == "task_started" {
+                events.removeAll()
+                seen.removeAll()
+                continue
+            }
+
+            let event: AgentActivityEvent?
+            if recordType == "event_msg", (payload["type"] as? String) == "item_completed",
+               let item = payload["item"] as? [String: Any] {
+                event = codexCompletedEvent(item, fallbackID: "event-\(lineIndex)")
+            } else if recordType == "response_item" {
+                event = codexResponseEvent(payload, fallbackID: "response-\(lineIndex)")
+            } else {
+                event = nil
+            }
+            guard let event, !event.text.isEmpty, seen.insert(event.id).inserted else { continue }
+            events.append(event)
+            if events.count > 40 { events.removeFirst(events.count - 40) }
+        }
+
+        if events.isEmpty {
+            return [AgentActivityEvent(id: "codex:waiting", kind: .status, text: "等待 Codex 活动")]
+        }
+        return Array(coalesceCodexEvents(events).suffix(10))
+    }
+
+    private func coalesceCodexEvents(_ events: [AgentActivityEvent]) -> [AgentActivityEvent] {
+        let replaceableKinds: Set<String> = [
+            AgentActivityKind.think.rawValue,
+            AgentActivityKind.tool.rawValue,
+            AgentActivityKind.files.rawValue,
+            AgentActivityKind.search.rawValue,
+            AgentActivityKind.status.rawValue
+        ]
+        var compacted: [AgentActivityEvent] = []
+        for event in events {
+            if let last = compacted.last,
+               last.kind == event.kind,
+               replaceableKinds.contains(event.kind.rawValue) {
+                compacted[compacted.count - 1] = event
+            } else {
+                compacted.append(event)
+            }
+        }
+        return compacted
+    }
+
+    private func codexCompletedEvent(_ item: [String: Any], fallbackID: String) -> AgentActivityEvent? {
+        let rawType = (item["type"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = rawType.lowercased()
+        let itemID = item["id"] as? String ?? fallbackID
+        switch type {
+        case "reasoning":
+            let text = compactActivityText(extractCodexText(item["summary_text"]), limit: 84)
+            guard !text.isEmpty else { return nil }
+            return AgentActivityEvent(id: "codex:\(itemID):thinking", kind: .think, text: text)
+        case "commandexecution":
+            let command = (item["command"] as? [Any])?.map { String(describing: $0) } ?? []
+            let description = compactCommandDescription(command)
+            let status = (item["status"] as? String ?? "completed").lowercased()
+            let exitCode = (item["exit_code"] as? NSNumber)?.intValue
+            if status == "failed" || (exitCode != nil && exitCode != 0) {
+                let suffix = exitCode.map { "（退出码 \($0)）" } ?? ""
+                return AgentActivityEvent(id: "codex:\(itemID):error", kind: .error, text: "\(description)失败\(suffix)")
+            }
+            return AgentActivityEvent(id: "codex:\(itemID):tool", kind: .tool, text: "\(description) · 完成")
+        case "filechange":
+            return AgentActivityEvent(id: "codex:\(itemID):files", kind: .files, text: compactFileChanges(item["changes"]))
+        case "extension", "websearch":
+            return AgentActivityEvent(id: "codex:\(itemID):search", kind: .search, text: "查询网络资料")
+        case "mcptoolcall", "dynamictoolcall", "collabtoolcall":
+            let name = compactActivityText((item["tool"] as? String) ?? (item["server"] as? String) ?? "扩展工具", limit: 32)
+            return AgentActivityEvent(id: "codex:\(itemID):tool", kind: .tool, text: "调用 \(name)")
+        case "imageview":
+            let name = (item["path"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent } ?? "图片"
+            return AgentActivityEvent(id: "codex:\(itemID):image", kind: .tool, text: "查看 \(compactActivityText(name, limit: 42))")
+        case "contextcompaction":
+            return AgentActivityEvent(id: "codex:\(itemID):compact", kind: .status, text: "整理会话上下文")
+        case "agentmessage":
+            let text = extractCodexText(item["content"])
+            let phase = (item["phase"] as? String ?? "").lowercased()
+            if phase == "final_answer" {
+                return AgentActivityEvent(id: "codex:\(itemID):output", kind: .reply, text: String(text.prefix(12_000)), summarizeBeforeDisplay: true)
+            }
+            let compact = compactActivityText(text, limit: 90)
+            guard !compact.isEmpty else { return nil }
+            return AgentActivityEvent(id: "codex:\(itemID):status", kind: .status, text: compact)
+        default:
+            return nil
+        }
+    }
+
+    private func codexResponseEvent(_ payload: [String: Any], fallbackID: String) -> AgentActivityEvent? {
+        let type = (payload["type"] as? String ?? "").lowercased()
+        let itemID = payload["id"] as? String ?? fallbackID
+        switch type {
+        case "reasoning":
+            let text = compactActivityText(extractCodexText(payload["summary"]), limit: 84)
+            guard !text.isEmpty else { return nil }
+            return AgentActivityEvent(id: "codex:\(itemID):thinking", kind: .think, text: text)
+        case "message":
+            guard (payload["role"] as? String)?.lowercased() == "assistant" else { return nil }
+            let text = extractCodexText(payload["content"])
+            let phase = (payload["phase"] as? String ?? "").lowercased()
+            if phase == "final_answer" {
+                return AgentActivityEvent(id: "codex:\(itemID):output", kind: .reply, text: String(text.prefix(12_000)), summarizeBeforeDisplay: true)
+            }
+            let compact = compactActivityText(text, limit: 90)
+            guard !compact.isEmpty else { return nil }
+            return AgentActivityEvent(id: "codex:\(itemID):status", kind: .status, text: compact)
+        case "custom_tool_call", "function_call":
+            let name = payload["name"] as? String ?? "tool"
+            let input = payload["input"] as? String ?? ""
+            let description = compactToolCall(name: name, input: input)
+            return AgentActivityEvent(id: "codex:\(itemID):tool", kind: .tool, text: description)
+        default:
+            return nil
+        }
+    }
+
+    private func extractCodexText(_ value: Any?) -> String {
+        if let text = value as? String { return text }
+        if let values = value as? [Any] {
+            return values.map(extractCodexText).filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        if let value = value as? [String: Any] {
+            for key in ["text", "content", "summary_text", "message"] {
+                let text = extractCodexText(value[key])
+                if !text.isEmpty { return text }
+            }
+        }
+        return ""
+    }
+
+    private func compactCommandDescription(_ command: [String]) -> String {
+        let joined = command.joined(separator: " ").lowercased()
+        if joined.contains("./build.sh") || joined.contains("swift build") || joined.contains("swiftc ") { return "构建 Hermes Dashboard" }
+        if joined.contains("codesign") { return "验证应用签名" }
+        if joined.contains("git commit") { return "提交 Git 改动" }
+        if joined.contains("git add") { return "暂存 Git 改动" }
+        if joined.contains("git status") || joined.contains("git diff") || joined.contains("git log") { return "检查 Git 仓库" }
+        if joined.contains("rg ") || joined.contains("grep ") { return "搜索项目内容" }
+        if joined.contains("sed ") || joined.contains("cat ") || joined.contains("nl ") || joined.contains("tail ") || joined.contains("head ") || joined.contains("find ") { return "读取项目文件" }
+        if joined.contains("apply_patch") { return "更新项目文件" }
+        if joined.contains("ollama") { return "调用本地 Qwen" }
+        if joined.contains("curl ") { return "访问本地服务" }
+        guard let executable = command.first else { return "执行本地命令" }
+        if executable.contains("\n") || executable.contains("exec_command") || executable.count > 100 { return "执行本地命令" }
+        let name = URL(fileURLWithPath: executable).lastPathComponent
+        return "执行 \(compactActivityText(name, limit: 28))"
+    }
+
+    private func compactToolCall(name: String, input: String) -> String {
+        let lower = input.lowercased()
+        if lower.contains("web__run") { return "查询 OpenAI 官方文档" }
+        if lower.contains("apply_patch") { return "更新项目文件" }
+        if lower.contains("view_image") || lower.contains("imagegen") { return "处理图片资源" }
+        if lower.contains("exec_command") {
+            return compactCommandDescription([input])
+        }
+        return "调用 \(compactActivityText(name.replacingOccurrences(of: "_", with: " "), limit: 32))"
+    }
+
+    private func compactFileChanges(_ value: Any?) -> String {
+        var paths: [String] = []
+        if let changes = value as? [[String: Any]] {
+            paths = changes.compactMap { ($0["path"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent } }
+        } else if let changes = value as? [String: Any] {
+            paths = changes.keys.map { URL(fileURLWithPath: $0).lastPathComponent }
+        }
+        let unique = Array(Set(paths)).sorted()
+        guard !unique.isEmpty else { return "更新项目文件" }
+        let names = unique.prefix(3).joined(separator: "、")
+        let description = unique.count > 3 ? "更新 \(names) 等 \(unique.count) 个文件" : "更新 \(names)"
+        return compactActivityText(description, limit: 84)
     }
 
     private func readCodexRuntimeMetadata(state: [String: Any]?) -> (model: String?, thinking: String?, fastMode: Bool?, provider: String?) {
@@ -1342,7 +1692,7 @@ private struct HermesSnapshot {
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
             agentState: agentState,
             sessions: Array(sessionValues.prefix(5)),
-            activityLog: [],
+            activityLog: codexSnapshot?.activityLog ?? [],
             isLive: true,
             hasModelData: !(codexSnapshot?.model ?? payload.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             hasContextData: codexSnapshot?.hasContextData ?? (payload.contextUsedTokens != nil || payload.contextPercent != nil || payload.tokenPercent != nil || payload.tokens != nil)

@@ -761,17 +761,42 @@ struct SessionInfo {
     var contextPercent: Int = 0
 }
 
-enum AgentActivityKind {
+enum AgentActivityKind: String {
     case think
     case tool
+    case files
+    case search
     case result
     case reply
     case status
+    case error
+
+    var tag: String {
+        switch self {
+        case .think: return "[THINKING]"
+        case .tool: return "[TOOLS]"
+        case .files: return "[FILES]"
+        case .search: return "[SEARCH]"
+        case .result: return "[RESULT]"
+        case .reply: return "[OUTPUT]"
+        case .status: return "[STATUS]"
+        case .error: return "[ERROR]"
+        }
+    }
 }
 
 struct AgentActivityEvent {
+    var id: String
     var kind: AgentActivityKind
     var text: String
+    var summarizeBeforeDisplay: Bool
+
+    init(id: String = "", kind: AgentActivityKind, text: String, summarizeBeforeDisplay: Bool = false) {
+        self.id = id
+        self.kind = kind
+        self.text = text
+        self.summarizeBeforeDisplay = summarizeBeforeDisplay
+    }
 }
 
 struct RuntimeStatus {
@@ -816,11 +841,11 @@ struct RuntimeStatus {
                 SessionInfo(title: "Review telemetry output", progress: 0, status: "", updatedAt: "12:10")
             ],
             activityLog: [
-                AgentActivityEvent(kind: .status, text: "STANDBY  waiting for hermes"),
-                AgentActivityEvent(kind: .think, text: "THINK  parse dashboard layout"),
-                AgentActivityEvent(kind: .tool, text: "TOOL  terminal  git status"),
-                AgentActivityEvent(kind: .result, text: "OK  working tree clean"),
-                AgentActivityEvent(kind: .reply, text: "REPLY  dashboard layout is ready")
+                AgentActivityEvent(id: "demo-status", kind: .status, text: "等待代理任务"),
+                AgentActivityEvent(id: "demo-thinking", kind: .think, text: "分析仪表盘布局"),
+                AgentActivityEvent(id: "demo-tool", kind: .tool, text: "检查 Git 状态"),
+                AgentActivityEvent(id: "demo-result", kind: .result, text: "工作区检查完成"),
+                AgentActivityEvent(id: "demo-output", kind: .reply, text: "仪表盘已准备完成")
             ],
             isLive: false,
             hasModelData: false,
@@ -829,6 +854,7 @@ struct RuntimeStatus {
     }
 
     func preservingTransientData(from previous: RuntimeStatus) -> RuntimeStatus {
+        guard previous.source == source else { return self }
         var merged = self
         let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !hasModelData || normalizedModel.isEmpty || normalizedModel == "custom" {
@@ -861,12 +887,14 @@ final class DashboardModel: NSObject {
     private(set) var planUsage: PlanUsageSnapshot
     private(set) var weatherSettings: WeatherSettings
     private(set) var assetStore: DashboardAssetStore
+    private(set) var streamedActivityLog: [AgentActivityEvent] = []
     var weatherCity: String { weatherSettings.city }
     var onChange: (() -> Void)?
 
     var runtimeSource: RuntimeSource {
         didSet {
             UserDefaults.standard.set(runtimeSource.rawValue, forKey: Keys.runtimeSource)
+            resetActivityStream(for: runtimeSource)
             refreshRuntime()
         }
     }
@@ -890,6 +918,12 @@ final class DashboardModel: NSObject {
     private var refreshTimer: Timer?
     private var planUsageTimer: Timer?
     private var weatherTimer: Timer?
+    private var activityStreamTimer: Timer?
+    private var activityStreamSource: RuntimeSource?
+    private var activityQueue: [AgentActivityEvent] = []
+    private var activeActivity: (event: AgentActivityEvent, characters: [Character], revealed: Int)?
+    private var completedActivityIDs = Set<String>()
+    private var activityPauseTicks = 0
 
     override init() {
         var storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
@@ -919,6 +953,7 @@ final class DashboardModel: NSObject {
     }
 
     func start() {
+        scheduleActivityStreamTimer()
         refreshAll()
         refreshPlanUsage()
         schedulePlanUsageTimer()
@@ -935,6 +970,8 @@ final class DashboardModel: NSObject {
         planUsageTimer = nil
         weatherTimer?.invalidate()
         weatherTimer = nil
+        activityStreamTimer?.invalidate()
+        activityStreamTimer = nil
     }
 
     func setWallpaper(url: URL?) {
@@ -1054,10 +1091,96 @@ final class DashboardModel: NSObject {
         let source = runtimeSource
         runtimeService.fetch(source: source) { [weak self] status in
             guard let self else { return }
+            guard source == self.runtimeSource else { return }
             self.runtime = status.preservingTransientData(from: self.runtime)
+            self.updateActivityTarget(self.runtime.activityLog, source: source)
             self.applyPlanUsageToRuntime()
             self.notifyChange()
         }
+    }
+
+    private func scheduleActivityStreamTimer() {
+        activityStreamTimer?.invalidate()
+        activityStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.035, repeats: true) { [weak self] _ in
+            self?.advanceActivityStream()
+        }
+    }
+
+    private func resetActivityStream(for source: RuntimeSource) {
+        activityStreamSource = source
+        activityQueue.removeAll()
+        activeActivity = nil
+        completedActivityIDs.removeAll()
+        streamedActivityLog.removeAll()
+        activityPauseTicks = 0
+        notifyChange()
+    }
+
+    private func updateActivityTarget(_ events: [AgentActivityEvent], source: RuntimeSource) {
+        if activityStreamSource != source { resetActivityStream(for: source) }
+        let target = Array(events.suffix(14).enumerated()).map { index, event -> AgentActivityEvent in
+            var normalized = event
+            if normalized.id.isEmpty {
+                normalized.id = "\(source.rawValue):\(index):\(event.kind.rawValue):\(event.text)"
+            }
+            return normalized
+        }
+        let desiredIDs = Set(target.map(\.id))
+        streamedActivityLog.removeAll { !desiredIDs.contains($0.id) }
+        activityQueue.removeAll { !desiredIDs.contains($0.id) }
+        if let activeActivity, !desiredIDs.contains(activeActivity.event.id) {
+            self.activeActivity = nil
+        }
+        completedActivityIDs.formIntersection(desiredIDs)
+
+        var knownIDs = Set(streamedActivityLog.map(\.id))
+        knownIDs.formUnion(activityQueue.map(\.id))
+        if let activeActivity { knownIDs.insert(activeActivity.event.id) }
+        knownIDs.formUnion(completedActivityIDs)
+        for event in target where !knownIDs.contains(event.id) {
+            activityQueue.append(event)
+            knownIDs.insert(event.id)
+        }
+    }
+
+    private func advanceActivityStream() {
+        if activityPauseTicks > 0 {
+            activityPauseTicks -= 1
+            return
+        }
+        if activeActivity == nil {
+            guard !activityQueue.isEmpty else { return }
+            let event = activityQueue.removeFirst()
+            let characters = Array(event.text)
+            var visible = event
+            visible.text = ""
+            streamedActivityLog.append(visible)
+            if streamedActivityLog.count > 14 {
+                streamedActivityLog.removeFirst(streamedActivityLog.count - 14)
+            }
+            activeActivity = (event, characters, 0)
+            notifyChange()
+            if characters.isEmpty {
+                completedActivityIDs.insert(event.id)
+                activeActivity = nil
+                activityPauseTicks = 2
+            }
+            return
+        }
+
+        guard var typing = activeActivity else { return }
+        typing.revealed = min(typing.revealed + 1, typing.characters.count)
+        if let index = streamedActivityLog.lastIndex(where: { $0.id == typing.event.id }) {
+            streamedActivityLog[index].text = String(typing.characters.prefix(typing.revealed))
+        }
+        if typing.revealed >= typing.characters.count {
+            completedActivityIDs.insert(typing.event.id)
+            activeActivity = nil
+            activityPauseTicks = 3
+        } else {
+            activeActivity = typing
+        }
+        notifyChange()
     }
 
     private func schedulePlanUsageTimer() {
