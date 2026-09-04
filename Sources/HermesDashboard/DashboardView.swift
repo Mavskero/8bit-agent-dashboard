@@ -240,8 +240,8 @@ final class DashboardView: NSView {
         }
 
         // Borderless three-line music broadcast.
-        let title = model.music.isPlaying && !model.music.title.isEmpty ? model.music.title : "-"
-        let artist = model.music.isPlaying ? model.music.artist : ""
+        let title = model.music.title.isEmpty ? "-" : model.music.title
+        let artist = model.music.artist
         drawMusicVisualizer(context: context)
         drawText("NOW PLAYING", key: .musicStatus, at: DashboardStyleKey.musicStatus.defaultPosition, context: context)
         drawText(title, key: .title, at: CGPoint(x: 42, y: 287), context: context)
@@ -279,10 +279,10 @@ final class DashboardView: NSView {
 
         let rows: [(RuntimeIconKey, String, String, NSColor)] = [
             (.model, "MODEL", model.runtime.model, PixelPalette.cyan),
-            (.thinking, "THINKING", model.runtime.thinking, thinkingColor(model.runtime.thinking)),
+            (.thinking, "THINKING", model.runtime.thinking, model.runtime.automaticValueColor(for: .thinking)),
             (.fastMode, "FASTMODE", model.runtime.fastMode ? "ON" : "OFF", PixelPalette.cyan),
             (.provider, "PLAN", model.runtime.provider, PixelPalette.cyan),
-            (.balance, "BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
+            (.balance, "BALANCE", model.runtime.balance, model.runtime.automaticValueColor(for: .balance)),
             (.reset, "RESET", model.planUsage.resetCountdown(), PixelPalette.violet),
             (.tokens, "TOKENS", formattedTokenCount(model.displayedTodayTokens), PixelPalette.cyan)
         ]
@@ -308,15 +308,16 @@ final class DashboardView: NSView {
             }
             if row.0 == .fastMode {
                 var fastStyle = rowStyle
-                fastStyle.colorHex = (row.2 == "ON" ? PixelPalette.cyan : PixelPalette.orange).hexString
+                fastStyle.colorHex = model.runtimeValueColor(for: row.0).hexString
                 drawText(row.2, key: .runtime, at: CGPoint(x: origin.x + 360, y: rowY + 4), context: context, style: fastStyle)
-                PixelPalette.cyan.setFill()
+                let switchColor = model.layout.runtimeValueColors[row.0.rawValue].flatMap { NSColor(hex: $0) } ?? PixelPalette.cyan
+                switchColor.setFill()
                 context.fill(CGRect(x: origin.x + 418, y: rowY + 5, width: 42, height: 25))
                 PixelPalette.navy.setFill()
                 context.fill(CGRect(x: origin.x + (row.2 == "ON" ? 438 : 422), y: rowY + 9, width: 17, height: 17))
             } else {
                 var valueStyle = rowStyle
-                valueStyle.colorHex = row.3.hexString
+                valueStyle.colorHex = model.runtimeValueColor(for: row.0).hexString
                 let valueWidth = PixelPainter.textWidth(row.2, style: valueStyle)
                 drawText(row.2, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
             }
@@ -334,23 +335,6 @@ final class DashboardView: NSView {
         case .error: return PixelPalette.red
         case .done, .idle: return PixelPalette.green
         }
-    }
-
-    private func thinkingColor(_ value: String) -> NSColor {
-        switch value.lowercased() {
-        case "low", "minimal": return PixelPalette.green
-        case "medium", "med": return PixelPalette.yellow
-        case "high": return PixelPalette.orange
-        case "xhigh", "ultra", "max": return PixelPalette.violet
-        default: return PixelPalette.cyan
-        }
-    }
-
-    private func balanceColor(_ value: Double?) -> NSColor {
-        guard let value else { return PixelPalette.orange }
-        if value >= 50 { return PixelPalette.green }
-        if value >= 20 { return PixelPalette.yellow }
-        return PixelPalette.red
     }
 
     private func runtimeIconImage(style: RuntimeIconStyle) -> CGImage? {

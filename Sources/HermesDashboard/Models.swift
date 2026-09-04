@@ -313,11 +313,13 @@ struct DashboardLayout: Codable, Equatable {
     var runtimeTitleSpacing: CGFloat
     var runtimeIconTitleSpacing: CGFloat
     var runtimeIcons: [String: RuntimeIconStyle]
+    /// Missing entries use the automatic status color for that value.
+    var runtimeValueColors: [String: String]
 
     private enum CodingKeys: String, CodingKey {
         case padding, runtimeStatus, hermesAgent, activeSession
         case runtimeOpacity, agentOpacity, activeSessionOpacity, sessionCardOpacity
-        case runtimeTitleSpacing, runtimeIconTitleSpacing, runtimeIcons
+        case runtimeTitleSpacing, runtimeIconTitleSpacing, runtimeIcons, runtimeValueColors
     }
 
     init(
@@ -331,7 +333,8 @@ struct DashboardLayout: Codable, Equatable {
         sessionCardOpacity: CGFloat = 0.82,
         runtimeTitleSpacing: CGFloat = 18,
         runtimeIconTitleSpacing: CGFloat = 28,
-        runtimeIcons: [String: RuntimeIconStyle] = DashboardLayout.defaultRuntimeIcons
+        runtimeIcons: [String: RuntimeIconStyle] = DashboardLayout.defaultRuntimeIcons,
+        runtimeValueColors: [String: String] = [:]
     ) {
         self.padding = padding
         self.runtimeStatus = runtimeStatus
@@ -344,6 +347,7 @@ struct DashboardLayout: Codable, Equatable {
         self.runtimeTitleSpacing = runtimeTitleSpacing
         self.runtimeIconTitleSpacing = runtimeIconTitleSpacing
         self.runtimeIcons = runtimeIcons
+        self.runtimeValueColors = runtimeValueColors
     }
 
     init(from decoder: Decoder) throws {
@@ -359,6 +363,7 @@ struct DashboardLayout: Codable, Equatable {
         runtimeTitleSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .runtimeTitleSpacing) ?? 18
         runtimeIconTitleSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .runtimeIconTitleSpacing) ?? 28
         runtimeIcons = try container.decodeIfPresent([String: RuntimeIconStyle].self, forKey: .runtimeIcons) ?? DashboardLayout.defaultRuntimeIcons
+        runtimeValueColors = try container.decodeIfPresent([String: String].self, forKey: .runtimeValueColors) ?? [:]
         for key in RuntimeIconKey.allCases where runtimeIcons[key.rawValue] == nil {
             runtimeIcons[key.rawValue] = DashboardLayout.defaultRuntimeIcons[key.rawValue]
         }
@@ -777,6 +782,16 @@ struct MusicSnapshot {
     var position: Double
     var duration: Double
 
+    func preservingTrack(from previous: MusicSnapshot) -> MusicSnapshot {
+        guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !previous.title.isEmpty else { return self }
+        var retained = self
+        retained.title = previous.title
+        retained.artist = previous.artist
+        retained.album = previous.album
+        return retained
+    }
+
     static let notPlaying = MusicSnapshot(
         artist: "",
         title: "",
@@ -877,6 +892,27 @@ struct RuntimeStatus {
     var isLive: Bool
     var hasModelData: Bool
     var hasContextData: Bool
+
+    func automaticValueColor(for key: RuntimeIconKey) -> NSColor {
+        switch key {
+        case .thinking:
+            switch thinking.lowercased() {
+            case "low", "minimal": return PixelPalette.green
+            case "medium", "med": return PixelPalette.yellow
+            case "high": return PixelPalette.orange
+            case "xhigh", "ultra", "max": return PixelPalette.violet
+            default: return PixelPalette.cyan
+            }
+        case .balance:
+            guard let balanceValue else { return PixelPalette.orange }
+            if balanceValue >= 50 { return PixelPalette.green }
+            if balanceValue >= 20 { return PixelPalette.yellow }
+            return PixelPalette.red
+        case .fastMode: return fastMode ? PixelPalette.cyan : PixelPalette.orange
+        case .reset: return PixelPalette.violet
+        default: return PixelPalette.cyan
+        }
+    }
 
     static func demo(source: RuntimeSource) -> RuntimeStatus {
         RuntimeStatus(
@@ -1100,6 +1136,11 @@ final class DashboardModel: NSObject {
         notifyChange()
     }
 
+    func runtimeValueColor(for key: RuntimeIconKey) -> NSColor {
+        layout.runtimeValueColors[key.rawValue].flatMap { NSColor(hex: $0) }
+            ?? runtime.automaticValueColor(for: key)
+    }
+
     func updatePlanUsageSettings(_ settings: PlanUsageSettings) {
         var updated = settings
         updated.planLabel = updated.planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1183,7 +1224,7 @@ final class DashboardModel: NSObject {
     private func refreshMusic() {
         musicService.fetch { [weak self] snapshot in
             guard let self else { return }
-            self.music = snapshot
+            self.music = snapshot.preservingTrack(from: self.music)
             self.notifyChange()
         }
     }

@@ -19,7 +19,7 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather、Music、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等元素。天气文字的 X 是左边界；当前天气名称统一为 3–7 个字符的短名称。天气图标的 Y 锚定素材最上方的可见像素，因此切换含不同透明边距的素材时不会上下跳动。音乐区的波浪动画、`NOW PLAYING`、歌名和歌手各有独立设置；每一项都支持 X/Y 画布坐标、字号或图形尺寸、颜色，文字项还支持字体和平滑渲染。没有歌曲播放时歌名显示 `-`，歌手留空，波浪仍持续播放。面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather、Music、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等元素。天气文字的 X 是左边界；当前天气名称统一为 3–7 个字符的短名称。天气图标的 Y 锚定素材最上方的可见像素，因此切换含不同透明边距的素材时不会上下跳动。音乐区的波浪动画、`NOW PLAYING`、歌名和歌手各有独立设置；每一项都支持 X/Y 画布坐标、字号或图形尺寸、颜色，文字项还支持字体和平滑渲染。暂停或停止后保留最近一次歌曲名和歌手，读取到新歌曲时自动更新；尚未读取过歌曲时才显示 `-` 和空歌手。波浪仍持续播放。面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixelon`：随 App 打包的像素字体，项目内使用该字体的默认文字无需依赖系统预装字体
@@ -59,7 +59,7 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 最终输出不会直接进入信息流。Dashboard 会先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）生成以核心结论为主、可适当换行的纯文本摘要。提示词会根据活动区和用户设置的字号给出行数及容量目标；预测到内容放不下或模型以省略号收尾时，会提前停在自然语句边界并显示“详情请进入客户端查看”。摘要完成后会清空此前的思考和工具过程，只以绿色 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称，模型不可用时使用本地精简结果。
 
-主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。
+主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。主设置窗口的 `Runtime Colors…` 可独立修改 MODEL、THINKING、FASTMODE、PLAN、BALANCE、RESET、TOKENS 右侧内容的颜色，支持取色器和 HEX 输入，实时生效并保存；勾选对应行的 `Auto` 恢复默认状态配色。
 
 `Weather Settings…` 可以选择天气源和天气图标包，并设置图标的 X/Y 位置与 24–384 px 显示尺寸。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。启动时在后台读取钥匙串，因此 macOS 等待凭证授权时不会阻塞音乐、Runtime 或界面刷新。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；天气行只显示天气状况，不附加来源字段。
 

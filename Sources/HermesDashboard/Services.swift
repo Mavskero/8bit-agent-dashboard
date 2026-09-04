@@ -572,7 +572,6 @@ final class AppleMusicService {
         let script = #"""
         tell application "Music"
             set currentState to (player state as text)
-            if currentState is "stopped" then return "stopped"
             set separator to ASCII character 9
             set trackName to name of current track as text
             set artistName to artist of current track as text

@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var layoutController: LayoutSettingsWindowController?
     private var planUsageController: PlanUsageSettingsWindowController?
     private var weatherController: WeatherSettingsWindowController?
+    private var runtimeColorController: RuntimeColorSettingsWindowController?
 
     init(model: DashboardModel, parentWindow: NSWindow?, onDisplayChanged: @escaping (NSScreen) -> Void) {
         self.model = model
@@ -124,6 +125,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         content.addSubview(assetHint)
 
         addButton("Layout / Opacity…", x: 28, y: 404, width: 140, action: #selector(showLayoutSettings(_:)), to: content)
+        addButton("Runtime Colors…", x: 180, y: 404, width: 150, action: #selector(showRuntimeColors(_:)), to: content)
         let styleTitle = makeLabel("TEXT STYLE OVERRIDES")
         styleTitle.frame = NSRect(x: 28, y: 376, width: 300, height: 20)
         content.addSubview(styleTitle)
@@ -187,6 +189,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func showPlanUsageSettings(_ sender: NSButton) {
         if planUsageController == nil { planUsageController = PlanUsageSettingsWindowController(model: model, parentWindow: window) }
         planUsageController?.showWindow(nil)
+    }
+
+    @objc private func showRuntimeColors(_ sender: NSButton) {
+        if runtimeColorController == nil {
+            runtimeColorController = RuntimeColorSettingsWindowController(model: model, parentWindow: window) { [weak self] well in
+                self?.showColorPanel(for: well)
+            }
+        }
+        runtimeColorController?.showWindow(nil)
     }
 
     @objc private func showWeatherSettings(_ sender: NSButton) {
@@ -833,6 +844,141 @@ private final class PlanUsageSettingsWindowController: NSWindowController, NSWin
         settings.codexExecutable = fields["codexExecutable"]?.stringValue ?? settings.codexExecutable
         settings.refreshInterval = 600
         model.updatePlanUsageSettings(settings)
+    }
+}
+
+private final class RuntimeColorSettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let model: DashboardModel
+    private weak var parentWindow: NSWindow?
+    private let showColorPanel: (NSColorWell) -> Void
+    private var rows: [RuntimeIconKey: (automatic: NSButton, well: DashboardColorWell, hex: NSTextField)] = [:]
+
+    init(model: DashboardModel, parentWindow: NSWindow?, showColorPanel: @escaping (NSColorWell) -> Void) {
+        self.model = model
+        self.parentWindow = parentWindow
+        self.showColorPanel = showColorPanel
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 430), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.title = "Runtime Value Colors"
+        panel.isFloatingPanel = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
+        super.init(window: panel)
+        panel.delegate = self
+        buildContent()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func showWindow(_ sender: Any?) {
+        reloadRows()
+        super.showWindow(sender)
+        if let panel = window {
+            let frame = (parentWindow?.screen ?? DashboardDisplayPreference.preferredScreen()).visibleFrame
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2))
+            if let parentWindow, panel.parent == nil { parentWindow.addChildWindow(panel, ordered: .above) }
+            NSApp.activate(ignoringOtherApps: true)
+            panel.orderFrontRegardless()
+            panel.makeKey()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        for row in rows.values { row.well.deactivate() }
+        guard let window else { return }
+        parentWindow?.removeChildWindow(window)
+        parentWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func buildContent() {
+        guard let content = window?.contentView else { return }
+        let title = NSTextField(labelWithString: "RUNTIME VALUE COLORS")
+        title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+        title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
+        title.frame = NSRect(x: 28, y: 386, width: 460, height: 26)
+        content.addSubview(title)
+        for (text, x) in [("FIELD", CGFloat(28)), ("MODE", 145), ("COLOR", 250), ("HEX / RRGGBB", 322)] {
+            let label = NSTextField(labelWithString: text)
+            label.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+            label.textColor = NSColor.secondaryLabelColor
+            label.frame = NSRect(x: x, y: 351, width: 140, height: 18)
+            content.addSubview(label)
+        }
+        for (index, key) in RuntimeIconKey.allCases.enumerated() {
+            let y = 312 - CGFloat(index) * 40
+            let label = NSTextField(labelWithString: key.displayName)
+            label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+            label.frame = NSRect(x: 28, y: y + 4, width: 110, height: 20)
+            content.addSubview(label)
+            let automatic = NSButton(checkboxWithTitle: "Auto", target: self, action: #selector(automaticChanged(_:)))
+            automatic.frame = NSRect(x: 145, y: y, width: 85, height: 28)
+            automatic.tag = index
+            content.addSubview(automatic)
+            let well = DashboardColorWell(frame: NSRect(x: 248, y: y, width: 48, height: 28))
+            well.tag = index
+            well.target = self
+            well.action = #selector(colorChanged(_:))
+            well.onDoubleClick = { [weak self, weak well] in
+                guard let self, let well else { return }
+                self.showColorPanel(well)
+            }
+            well.setAccessibilityLabel("\(key.displayName) value color")
+            content.addSubview(well)
+            let hex = NSTextField(string: "")
+            hex.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            hex.frame = NSRect(x: 322, y: y, width: 140, height: 28)
+            hex.tag = index
+            hex.target = self
+            hex.action = #selector(hexChanged(_:))
+            hex.setAccessibilityLabel("\(key.displayName) value hex color")
+            content.addSubview(hex)
+            rows[key] = (automatic, well, hex)
+        }
+        let note = NSTextField(wrappingLabelWithString: "Right-hand field values only. Auto follows status colors. Choose a color or enter HEX; changes are saved immediately.")
+        note.font = NSFont.systemFont(ofSize: 11)
+        note.textColor = NSColor.secondaryLabelColor
+        note.frame = NSRect(x: 28, y: 18, width: 464, height: 38)
+        content.addSubview(note)
+        reloadRows()
+    }
+
+    private func reloadRows() {
+        for (key, row) in rows {
+            row.automatic.state = model.layout.runtimeValueColors[key.rawValue] == nil ? .on : .off
+            let color = model.runtimeValueColor(for: key)
+            row.well.color = color
+            row.hex.stringValue = color.hexString
+        }
+    }
+
+    private func save(_ color: NSColor?, for key: RuntimeIconKey) {
+        var layout = model.layout
+        layout.runtimeValueColors[key.rawValue] = color?.hexString
+        model.updateLayout(layout)
+        reloadRows()
+    }
+
+    @objc private func automaticChanged(_ sender: NSButton) {
+        let key = RuntimeIconKey.allCases[sender.tag]
+        save(sender.state == .on ? nil : model.runtimeValueColor(for: key), for: key)
+    }
+
+    @objc private func colorChanged(_ sender: NSColorWell) {
+        let key = RuntimeIconKey.allCases[sender.tag]
+        // Assigning a color during reload must not turn Auto into an override.
+        guard sender.color.hexString != model.runtimeValueColor(for: key).hexString else { return }
+        save(sender.color, for: key)
+    }
+
+    @objc private func hexChanged(_ sender: NSTextField) {
+        let key = RuntimeIconKey.allCases[sender.tag]
+        guard let color = NSColor(hex: sender.stringValue) else {
+            reloadRows()
+            return
+        }
+        save(color, for: key)
     }
 }
 
