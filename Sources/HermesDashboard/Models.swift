@@ -783,6 +783,7 @@ enum AgentActivityKind: String {
     case result
     case reply
     case status
+    case approval
     case error
 
     var tag: String {
@@ -794,8 +795,30 @@ enum AgentActivityKind: String {
         case .result: return "[RESULT]"
         case .reply: return "[OUTPUT]"
         case .status: return "[STATUS]"
+        case .approval: return "[APPROVAL]"
         case .error: return "[ERROR]"
         }
+    }
+}
+
+struct ActivitySummaryLayout {
+    static let panelSize = CGSize(width: 318, height: 216)
+
+    var style: TextStyle
+    var width: CGFloat
+    var height: CGFloat
+
+    var lineHeight: CGFloat { max(style.pointSize + 6, 16) }
+    var maxLines: Int { max(Int(height / lineHeight), 1) }
+    var approximateCharactersPerLine: Int {
+        let glyphWidth = max(PixelPainter.textWidth("总结内容", style: style) / 4, 1)
+        return max(Int((width - 4) / glyphWidth), 8)
+    }
+    var approximateCharacterCapacity: Int {
+        max(approximateCharactersPerLine * maxLines - AgentActivityKind.reply.tag.count - 1, 24)
+    }
+    var signature: String {
+        "\(style.fontName)|\(Int(style.pointSize.rounded()))|\(Int(width.rounded()))x\(Int(height.rounded()))"
     }
 }
 
@@ -1119,7 +1142,13 @@ final class DashboardModel: NSObject {
 
     fileprivate func refreshRuntime() {
         let source = runtimeSource
-        runtimeService.fetch(source: source) { [weak self] status in
+        let activityStyle = styles.style(for: .agentActivity)
+        let activityLayout = ActivitySummaryLayout(
+            style: activityStyle,
+            width: ActivitySummaryLayout.panelSize.width,
+            height: ActivitySummaryLayout.panelSize.height
+        )
+        runtimeService.fetch(source: source, activityLayout: activityLayout) { [weak self] status in
             guard let self else { return }
             guard source == self.runtimeSource else { return }
             self.runtime = status.preservingTransientData(from: self.runtime)

@@ -147,6 +147,12 @@ struct PixelPainter {
         var lines: [String] = []
         var current = ""
         for character in text {
+            if character == "\n" {
+                lines.append(current)
+                current = ""
+                if lines.count == maxLines { return lines }
+                continue
+            }
             let candidate = current + String(character)
             if PixelPainter.textWidth(candidate, style: style) <= maxWidth {
                 current = candidate

@@ -210,9 +210,7 @@ final class DashboardView: NSView {
             x: temperaturePoint.x + temperaturePosition.x - DashboardStyleKey.temperature.defaultPosition.x,
             y: temperaturePoint.y + temperaturePosition.y - DashboardStyleKey.temperature.defaultPosition.y
         )
-        let weatherLabel = [model.weather.condition.displayName, model.weather.attribution]
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
+        let weatherLabel = model.weather.condition.displayName
         if !weatherLabel.isEmpty {
             let weatherStyle = model.styles.style(for: .weatherCity)
             let cityPoint = CGPoint(
@@ -442,6 +440,7 @@ final class DashboardView: NSView {
         case .result: return PixelPalette.green
         case .reply: return PixelPalette.cream
         case .status: return PixelPalette.yellow
+        case .approval: return NSColor(hex: "#B51F6D") ?? PixelPalette.violet
         case .error: return PixelPalette.red
         }
     }

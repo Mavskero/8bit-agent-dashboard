@@ -308,36 +308,37 @@ private final class LocalQwenSummaryService {
     private let model = "qwen3.5:2b"
     private var cache: [String: LocalSummaryResult] = [:]
 
-    func summarize(id: String, text: String) -> LocalSummaryResult {
-        if let cached = cache[id] { return cached }
+    func summarize(id: String, text: String, layout: ActivitySummaryLayout) -> LocalSummaryResult {
+        let cacheKey = "\(id)|\(layout.signature)"
+        if let cached = cache[cacheKey] { return cached }
         let clippedInput = String(text.prefix(6_000))
         let prompt = """
-        将输入内容总结成一段不超过100个中文字符的纯文本。
+        将输入内容总结成适合软件活动区展示的中文纯文本。活动区按当前字号大约每行可显示\(layout.approximateCharactersPerLine)个汉字，最多\(layout.maxLines)行。内容不必严格限制为100个汉字，但应尽量完整地放在这个活动区内。
 
         要求：
         1. 保留对象、核心结论、关键数字以及异常或限制。
         2. 优先说明发生了什么、结果如何、是否需要用户处理。
-        3. 不使用标题、Markdown、列表、换行和前缀。
-        4. 不解释总结过程，不添加原文没有的信息。
-        5. 如果内容没有异常，直接陈述结果。
+        3. 根据内容适当换行；不使用标题、Markdown、列表或前缀。
+        4. 以总结为主。需要展开的操作步骤或细节可以省略，并在末尾写“详情请进入客户端查看”。
+        5. 不解释总结过程，不添加原文没有的信息。内容没有异常时直接陈述结果。
 
         输入内容：
         \(clippedInput)
         """
-        let output = requestSummary(prompt)
+        let output = requestSummary(prompt, tokenBudget: min(max(layout.approximateCharacterCapacity * 2, 160), 600))
         let cleaned = cleanSummary(output)
         let result: LocalSummaryResult
         if cleaned.isEmpty {
-            result = LocalSummaryResult(text: compactFallback(text))
+            result = LocalSummaryResult(text: fitSummary(compactFallback(text), layout: layout))
         } else {
-            result = LocalSummaryResult(text: String(cleaned.prefix(100)))
+            result = LocalSummaryResult(text: fitSummary(cleaned, layout: layout))
         }
-        cache[id] = result
+        cache[cacheKey] = result
         if cache.count > 32, let first = cache.keys.first { cache.removeValue(forKey: first) }
         return result
     }
 
-    private func requestSummary(_ prompt: String) -> String? {
+    private func requestSummary(_ prompt: String, tokenBudget: Int) -> String? {
         guard let url = URL(string: "http://127.0.0.1:11434/api/generate"),
               let body = try? JSONSerialization.data(withJSONObject: [
                 "model": model,
@@ -345,7 +346,7 @@ private final class LocalQwenSummaryService {
                 "stream": false,
                 "think": false,
                 "keep_alive": "10m",
-                "options": ["temperature": 0.1, "num_predict": 120]
+                "options": ["temperature": 0.1, "num_predict": tokenBudget]
               ]) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -377,20 +378,54 @@ private final class LocalQwenSummaryService {
         if let start = text.range(of: "<think>"), let end = text.range(of: "</think>", range: start.upperBound..<text.endIndex) {
             text.removeSubrange(start.lowerBound..<end.upperBound)
         }
-        text = text.replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
+        text = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "`", with: "")
             .replacingOccurrences(of: "**", with: "")
             .replacingOccurrences(of: #"\[([^\]]+)\]\([^\)]+\)"#, with: "$1", options: .regularExpression)
             .replacingOccurrences(of: #"^(?:总结|摘要)[：:]\s*"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"^[#*\-\s]+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)^[#*\-]+\s*"#, with: "", options: .regularExpression)
         while text.contains("  ") { text = text.replacingOccurrences(of: "  ", with: " ") }
+        while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
         return text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+    }
+
+    private func fitSummary(_ text: String, layout: ActivitySummaryLayout) -> String {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return "任务已完成，详情请进入客户端查看" }
+        if summaryFits(normalized, layout: layout) { return normalized }
+
+        let detail = "详情请进入客户端查看"
+        let characters = Array(normalized)
+        var lower = 0
+        var upper = characters.count
+        while lower < upper {
+            let middle = (lower + upper + 1) / 2
+            let prefix = String(characters.prefix(middle)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let candidate = prefix.isEmpty ? detail : "\(prefix)…\n\(detail)"
+            if summaryFits(candidate, layout: layout) {
+                lower = middle
+            } else {
+                upper = middle - 1
+            }
+        }
+        let prefix = String(characters.prefix(lower)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return prefix.isEmpty ? detail : "\(prefix)…\n\(detail)"
+    }
+
+    private func summaryFits(_ text: String, layout: ActivitySummaryLayout) -> Bool {
+        let formatted = "\(AgentActivityKind.reply.tag) \(text)"
+        return PixelPainter.wrappedLines(
+            formatted,
+            style: layout.style,
+            maxWidth: layout.width - 4,
+            maxLines: layout.maxLines + 1
+        ).count <= layout.maxLines
     }
 
     private func compactFallback(_ value: String) -> String {
         let text = cleanSummary(value)
-        return text.isEmpty ? "任务已完成，但没有可显示的结果。" : String(text.prefix(100))
+        return text.isEmpty ? "任务已完成，但没有可显示的结果。" : String(text.prefix(600))
     }
 }
 
@@ -832,7 +867,7 @@ private struct CodexSnapshot {
     var activityLog: [AgentActivityEvent]
     var agentState: AgentState
     var contextPercent: Int
-    var todayTokens: Int
+    var todayTokens: Int?
     var model: String?
     var thinking: String?
     var fastMode: Bool?
@@ -846,29 +881,32 @@ final class RuntimeStatusService {
     private let qwenSummaryService = LocalQwenSummaryService()
     private var completedSummaries: [String: LocalSummaryResult] = [:]
     private var pendingSummaries = Set<String>()
+    private let dailyTokenDateKey = "runtime.codex.dailyTokens.date"
+    private let dailyTokenValueKey = "runtime.codex.dailyTokens.value"
 
-    func fetch(source: RuntimeSource, completion: @escaping (RuntimeStatus) -> Void) {
+    func fetch(source: RuntimeSource, activityLayout: ActivitySummaryLayout, completion: @escaping (RuntimeStatus) -> Void) {
         queue.async {
             var status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
-            status = self.summarizeFinalOutput(in: status)
+            status = self.summarizeFinalOutput(in: status, layout: activityLayout)
             DispatchQueue.main.async { completion(status) }
         }
     }
 
-    private func summarizeFinalOutput(in status: RuntimeStatus) -> RuntimeStatus {
+    private func summarizeFinalOutput(in status: RuntimeStatus, layout: ActivitySummaryLayout) -> RuntimeStatus {
         guard let finalIndex = status.activityLog.lastIndex(where: { $0.summarizeBeforeDisplay }) else { return status }
         var updated = status
         let finalEvent = updated.activityLog[finalIndex]
+        let summaryID = "\(finalEvent.id)|\(layout.signature)"
         updated.activityLog.removeAll { $0.summarizeBeforeDisplay }
-        guard let result = completedSummaries[finalEvent.id] else {
+        guard let result = completedSummaries[summaryID] else {
             updated.agentState = .thinking
             updated.activityLog.append(AgentActivityEvent(id: "\(finalEvent.id):summary-pending", kind: .status, text: "正在总结输出结果"))
-            if pendingSummaries.insert(finalEvent.id).inserted {
+            if pendingSummaries.insert(summaryID).inserted {
                 summaryQueue.async {
-                    let result = self.qwenSummaryService.summarize(id: finalEvent.id, text: finalEvent.text)
+                    let result = self.qwenSummaryService.summarize(id: finalEvent.id, text: finalEvent.text, layout: layout)
                     self.queue.async {
-                        self.pendingSummaries.remove(finalEvent.id)
-                        self.completedSummaries[finalEvent.id] = result
+                        self.pendingSummaries.remove(summaryID)
+                        self.completedSummaries[summaryID] = result
                         if self.completedSummaries.count > 32, let first = self.completedSummaries.keys.first {
                             self.completedSummaries.removeValue(forKey: first)
                         }
@@ -901,8 +939,10 @@ final class RuntimeStatusService {
             status.agentState = codexSnapshot.agentState
             status.sessions = codexSnapshot.sessions
             status.activityLog = codexSnapshot.activityLog
-            status.todayTokens = codexSnapshot.todayTokens
-            status.hasTodayTokenData = true
+            if let todayTokens = codexSnapshot.todayTokens {
+                status.todayTokens = todayTokens
+                status.hasTodayTokenData = true
+            }
             if let model = codexSnapshot.model { status.model = model }
             if let thinking = codexSnapshot.thinking { status.thinking = thinking.uppercased() }
             if let fastMode = codexSnapshot.fastMode { status.fastMode = fastMode }
@@ -1246,12 +1286,14 @@ private struct HermesSnapshot {
 
         let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC LIMIT 5;")
         if !catalogRows.isEmpty {
-            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads;")
+            let stateRowsResult = readSQLiteRowsIfAvailable(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads;")
+            let stateRows = stateRowsResult ?? []
             let states = Dictionary(uniqueKeysWithValues: stateRows.compactMap { row -> (String, [String: Any])? in
                 guard let id = row["id"] as? String else { return nil }
                 return (id, row)
             })
-            let turnRows = readSQLiteRows(path: historyPath, query: "SELECT thread_id, status, started_at, completed_at FROM thread_turns ORDER BY started_at DESC;")
+            let turnRowsResult = readSQLiteRowsIfAvailable(path: historyPath, query: "SELECT thread_id, status, started_at, completed_at FROM thread_turns ORDER BY started_at DESC;")
+            let turnRows = turnRowsResult ?? []
             var latestTurns: [String: [String: Any]] = [:]
             for row in turnRows {
                 guard let threadID = row["thread_id"] as? String else { continue }
@@ -1259,7 +1301,10 @@ private struct HermesSnapshot {
                 let previous = (latestTurns[threadID]?["started_at"] as? NSNumber)?.doubleValue ?? -1
                 if started > previous { latestTurns[threadID] = row }
             }
-            let todayTokens = completedTodayTokens(states: states, latestTurns: latestTurns)
+            let measuredTodayTokens: Int? = stateRowsResult != nil && turnRowsResult != nil
+                ? completedTodayTokens(states: states, latestTurns: latestTurns)
+                : nil
+            let todayTokens = stableTodayTokens(measured: measuredTodayTokens)
 
             let sessions = catalogRows.compactMap { row -> SessionInfo? in
                 guard let threadID = row["thread_id"] as? String,
@@ -1320,7 +1365,7 @@ private struct HermesSnapshot {
         let legacySessions = readLegacyCodexTasks()
         guard !legacySessions.isEmpty else { return nil }
         let metadata = readCodexRuntimeMetadata(state: nil)
-        return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, todayTokens: 0, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
+        return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, todayTokens: stableTodayTokens(measured: nil), model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
     }
 
     private func completedTodayTokens(states: [String: [String: Any]], latestTurns: [String: [String: Any]], now: Date = Date()) -> Int {
@@ -1335,6 +1380,31 @@ private struct HermesSnapshot {
             total += max(tokens, 0)
         }
         return Int(min(total, Int64(Int.max)))
+    }
+
+    private func stableTodayTokens(measured: Int?, now: Date = Date()) -> Int? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar.current
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: now)
+        let defaults = UserDefaults.standard
+        let cachedDate = defaults.string(forKey: dailyTokenDateKey)
+
+        if cachedDate != today {
+            guard let measured else { return nil }
+            let value = max(measured, 0)
+            defaults.set(today, forKey: dailyTokenDateKey)
+            defaults.set(value, forKey: dailyTokenValueKey)
+            return value
+        }
+
+        let cached = max(defaults.integer(forKey: dailyTokenValueKey), 0)
+        guard let measured else { return cached }
+        let value = max(cached, measured)
+        if value != cached { defaults.set(value, forKey: dailyTokenValueKey) }
+        return value
     }
 
     private func readCodexActivity(_ path: String) -> [AgentActivityEvent] {
@@ -1352,6 +1422,8 @@ private struct HermesSnapshot {
 
         var events: [AgentActivityEvent] = []
         var seen = Set<String>()
+        var pendingApprovalEventIDs = Set<String>()
+        var approvalEventIDByCallID: [String: String] = [:]
         for (lineIndex, line) in text.split(whereSeparator: \.isNewline).enumerated() {
             guard line.utf8.count <= 524_288,
                   let lineData = line.data(using: .utf8),
@@ -1361,7 +1433,25 @@ private struct HermesSnapshot {
             if recordType == "event_msg", (payload["type"] as? String) == "task_started" {
                 events.removeAll()
                 seen.removeAll()
+                pendingApprovalEventIDs.removeAll()
+                approvalEventIDByCallID.removeAll()
                 continue
+            }
+
+            if recordType == "response_item" {
+                let responseType = (payload["type"] as? String ?? "").lowercased()
+                if responseType == "custom_tool_call_output" || responseType == "function_call_output" {
+                    if let callID = payload["call_id"] as? String,
+                       let eventID = approvalEventIDByCallID.removeValue(forKey: callID) {
+                        pendingApprovalEventIDs.remove(eventID)
+                    }
+                } else if isApprovalRequest(payload),
+                          let callID = (payload["call_id"] as? String) ?? (payload["id"] as? String) {
+                    let itemID = payload["id"] as? String ?? "approval-\(lineIndex)"
+                    let eventID = "codex:\(itemID):approval"
+                    approvalEventIDByCallID[callID] = eventID
+                    pendingApprovalEventIDs.insert(eventID)
+                }
             }
 
             let event: AgentActivityEvent?
@@ -1378,6 +1468,8 @@ private struct HermesSnapshot {
             if events.count > 40 { events.removeFirst(events.count - 40) }
         }
 
+        events.removeAll { $0.kind == .approval && !pendingApprovalEventIDs.contains($0.id) }
+
         if events.isEmpty {
             return [AgentActivityEvent(id: "codex:waiting", kind: .status, text: "等待 Codex 活动")]
         }
@@ -1390,7 +1482,8 @@ private struct HermesSnapshot {
             AgentActivityKind.tool.rawValue,
             AgentActivityKind.files.rawValue,
             AgentActivityKind.search.rawValue,
-            AgentActivityKind.status.rawValue
+            AgentActivityKind.status.rawValue,
+            AgentActivityKind.approval.rawValue
         ]
         var compacted: [AgentActivityEvent] = []
         for event in events {
@@ -1469,6 +1562,9 @@ private struct HermesSnapshot {
             guard !compact.isEmpty else { return nil }
             return AgentActivityEvent(id: "codex:\(itemID):status", kind: .status, text: compact)
         case "custom_tool_call", "function_call":
+            if isApprovalRequest(payload) {
+                return AgentActivityEvent(id: "codex:\(itemID):approval", kind: .approval, text: "等待用户授权后继续")
+            }
             let name = payload["name"] as? String ?? "tool"
             let input = payload["input"] as? String ?? ""
             let description = compactToolCall(name: name, input: input)
@@ -1476,6 +1572,15 @@ private struct HermesSnapshot {
         default:
             return nil
         }
+    }
+
+    private func isApprovalRequest(_ payload: [String: Any]) -> Bool {
+        let type = (payload["type"] as? String ?? "").lowercased()
+        if ["request_approval", "approval_request", "permission_request"].contains(type) { return true }
+        guard type == "custom_tool_call" || type == "function_call" else { return false }
+        let input = payload["input"] as? String ?? ""
+        let normalized = input.lowercased()
+        return normalized.contains("sandbox_permissions") && normalized.contains("require_escalated")
     }
 
     private func extractCodexText(_ value: Any?) -> String {
@@ -1626,10 +1731,16 @@ private struct HermesSnapshot {
     }
 
     private func readSQLiteRows(path: String, query: String) -> [[String: Any]] {
+        readSQLiteRowsIfAvailable(path: path, query: query) ?? []
+    }
+
+    private func readSQLiteRowsIfAvailable(path: String, query: String) -> [[String: Any]]? {
         guard FileManager.default.fileExists(atPath: path),
-              let output = ProcessRunner.run(executable: "/usr/bin/sqlite3", arguments: ["-readonly", "-json", path, query], timeout: 8),
+              let output = ProcessRunner.run(executable: "/usr/bin/sqlite3", arguments: ["-readonly", "-json", path, query], timeout: 8) else { return nil }
+        if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [] }
+        guard
               let data = output.data(using: .utf8),
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
         return rows
     }
 
@@ -1700,7 +1811,7 @@ private struct HermesSnapshot {
             balanceValue: payload.balanceValue ?? demo.balanceValue,
             tokenPercent: codexSnapshot?.contextPercent ?? clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
             todayTokens: codexSnapshot?.todayTokens ?? 0,
-            hasTodayTokenData: codexSnapshot != nil,
+            hasTodayTokenData: codexSnapshot?.todayTokens != nil,
             activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
