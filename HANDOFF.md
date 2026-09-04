@@ -71,7 +71,7 @@ runtimeTitleSpacing = 48
 runtimeIconTitleSpacing = 28
 ```
 
-文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`。`Weather · Right Edge` 的 X 是天气字段最后一个字符的固定右边界；旧设置首次加载时会把右边界放到气温左侧 16px，再保存为绝对坐标。音乐区按波浪动画和 `NOW PLAYING`、歌名、歌手三行排列，这四项分别支持位置、尺寸和颜色设置。`Session Context Percent` 和 `Active Session · Last Conversation` 也有独立设置。套餐用量默认读取 Codex app-server 的 `codex` bucket 10080 分钟窗口，刷新间隔 30 分钟；用户可覆盖套餐显示名。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`，位置为 X=560、Y=48、尺寸 128。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`。`Weather · Left Edge` 的 X 是天气字段的固定左边界；V2 右边界设置会在首次加载时换算为当时可见的左边界。天气短名称最长 7 个字符，图标 Y 锚定素材最上方的可见像素。音乐区按波浪动画和 `NOW PLAYING`、歌名、歌手三行排列，这四项分别支持位置、尺寸和颜色设置；未播放歌曲时歌名为 `-`、歌手为空，波浪仍持续动画。`Session Context Percent` 和 `Active Session · Last Conversation` 也有独立设置。套餐用量默认读取 Codex app-server 的 `codex` bucket 10080 分钟窗口，刷新间隔 30 分钟；用户可覆盖套餐显示名。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`，位置为 X=560、Y=48、尺寸 128。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 

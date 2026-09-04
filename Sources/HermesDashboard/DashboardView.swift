@@ -14,6 +14,7 @@ final class DashboardView: NSView {
     private var phase = 0
     private var clockColonVisible = true
     private var runtimeIconCache: [String: CGImage] = [:]
+    private var weatherTopInsetCache: [ObjectIdentifier: CGFloat] = [:]
     private let settingsButton: NSButton = {
         let button = SettingsButton(frame: .zero)
         button.setButtonType(.momentaryPushIn)
@@ -189,7 +190,17 @@ final class DashboardView: NSView {
             height: model.weatherSettings.iconSize
         )
         if let weatherImage = model.assetStore.weatherImage(condition: model.weather.condition, iconSet: model.weatherSettings.iconSet, at: CACurrentMediaTime()) {
-            PixelPainter.drawAsset(weatherImage, in: weatherRect, context: context)
+            let imageID = ObjectIdentifier(weatherImage)
+            let normalizedTopInset: CGFloat
+            if let cached = weatherTopInsetCache[imageID] {
+                normalizedTopInset = cached
+            } else {
+                normalizedTopInset = PixelPainter.normalizedTransparentTopInset(of: weatherImage)
+                weatherTopInsetCache[imageID] = normalizedTopInset
+            }
+            var alignedRect = weatherRect
+            alignedRect.origin.y -= weatherRect.height * normalizedTopInset
+            PixelPainter.drawAsset(weatherImage, in: alignedRect, context: context)
         } else {
             PixelPainter.drawWeatherIcon(
                 at: CGPoint(x: weatherRect.minX + weatherRect.width * 0.09, y: weatherRect.minY),
@@ -216,22 +227,21 @@ final class DashboardView: NSView {
             let cityY = temperatureOrigin.y + max((temperatureStyle.pointSize - weatherStyle.pointSize) * 0.45, 0)
             let weatherWidth = PixelPainter.textWidth(weatherLabel, style: weatherStyle)
             let weatherX: CGFloat
-            if model.usesWeatherRightEdge {
-                weatherX = weatherStyle.x - weatherWidth
+            if model.usesWeatherLeftEdge {
+                weatherX = weatherStyle.x
             } else {
-                // Start existing installations at a safe right edge just
-                // before the temperature, then keep the stored X absolute.
-                let safeRightEdge = temperatureOrigin.x - 16
-                weatherX = safeRightEdge - weatherWidth
-                model.migrateWeatherRightEdge(to: safeRightEdge)
+                // V2 stored the label's right edge. Convert it once to the
+                // currently visible left edge so existing layouts do not jump.
+                weatherX = weatherStyle.x - weatherWidth
+                model.migrateWeatherLeftEdge(to: weatherX)
             }
             let weatherY = cityY + weatherStyle.y - DashboardStyleKey.weatherCity.defaultPosition.y
             PixelPainter.drawText(weatherLabel, at: CGPoint(x: weatherX, y: weatherY), style: weatherStyle, context: context)
         }
 
         // Borderless three-line music broadcast.
-        let artist = model.music.artist.isEmpty ? "HERMES AGENT" : model.music.artist
-        let title = model.music.title.isEmpty ? "TELEMETRY DREAMS" : model.music.title
+        let title = model.music.isPlaying && !model.music.title.isEmpty ? model.music.title : "-"
+        let artist = model.music.isPlaying ? model.music.artist : ""
         drawMusicVisualizer(context: context)
         drawText("NOW PLAYING", key: .musicStatus, at: DashboardStyleKey.musicStatus.defaultPosition, context: context)
         drawText(title, key: .title, at: CGPoint(x: 42, y: 287), context: context)
@@ -245,7 +255,7 @@ final class DashboardView: NSView {
         let heightScale = max(style.pointSize, 6)
         let barWidth = max((heightScale * 0.28).rounded(), 2)
         let gap = max((heightScale * 0.30).rounded(), 2)
-        let animationPhase = model.music.isPlaying ? phase : 0
+        let animationPhase = phase
         style.color.setFill()
         for index in 0..<6 {
             let step = CGFloat(3 + ((animationPhase + index * 2) % 7)) / 9

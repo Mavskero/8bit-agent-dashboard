@@ -107,7 +107,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return "Clock"
         case .date: return "Date"
         case .temperature: return "Temperature"
-        case .weatherCity: return "Weather · Right Edge"
+        case .weatherCity: return "Weather · Left Edge"
         case .musicVisualizer: return "Music · Wave"
         case .musicStatus: return "Music · Now Playing"
         case .title: return "Music · Track"
@@ -130,7 +130,7 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return CGPoint(x: 42, y: 48)
         case .date: return CGPoint(x: 42, y: 186)
         case .temperature: return CGPoint(x: 66, y: 186)
-        case .weatherCity: return CGPoint(x: 560, y: 186)
+        case .weatherCity: return CGPoint(x: 480, y: 186)
         case .musicVisualizer: return CGPoint(x: 42, y: 252)
         case .musicStatus: return CGPoint(x: 106, y: 252)
         case .title: return CGPoint(x: 42, y: 287)
@@ -155,7 +155,7 @@ struct DashboardStyles: Codable, Equatable {
             DashboardStyleKey.clock.rawValue: TextStyle(fontName: "Pixelon", pointSize: 166, colorHex: "FDFAF6", x: 38, y: 27, smoothRendering: false),
             DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 40, colorHex: "FAF3E8", x: 42, y: 186, smoothRendering: false),
             DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Pixelon", pointSize: 36, colorHex: "72EDF2", x: 220, y: 230, smoothRendering: true),
-            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 560, y: 186, smoothRendering: false),
+            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 480, y: 186, smoothRendering: false),
             DashboardStyleKey.musicVisualizer.rawValue: TextStyle(fontName: "Pixelon", pointSize: 16, colorHex: "238FA4", x: 42, y: 252, smoothRendering: false),
             DashboardStyleKey.musicStatus.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 106, y: 252, smoothRendering: false),
             DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F9F0E2", x: 42, y: 287, smoothRendering: true),
@@ -183,6 +183,7 @@ struct DashboardStyles: Codable, Equatable {
         guard let data = UserDefaults.standard.data(forKey: "dashboardStyles"),
               let decoded = try? JSONDecoder().decode(DashboardStyles.self, from: data) else {
             UserDefaults.standard.set(true, forKey: "didMigrateWeatherRightEdgeV2")
+            UserDefaults.standard.set(true, forKey: "didMigrateWeatherLeftEdgeV3")
             return .defaults
         }
         var merged = DashboardStyles.defaults
@@ -729,7 +730,7 @@ enum WeatherCondition {
     var displayName: String {
         switch self {
         case .clear: return "CLEAR"
-        case .partlyCloudy: return "PARTLY CLOUDY"
+        case .partlyCloudy: return "PARTLY"
         case .cloudy: return "CLOUDY"
         case .fog: return "FOG"
         case .drizzle: return "DRIZZLE"
@@ -774,8 +775,8 @@ struct MusicSnapshot {
     var duration: Double
 
     static let notPlaying = MusicSnapshot(
-        artist: "HERMES AGENT",
-        title: "TELEMETRY DREAMS",
+        artist: "",
+        title: "",
         album: "",
         isPlaying: false,
         position: 0,
@@ -951,7 +952,7 @@ final class DashboardModel: NSObject {
     private(set) var streamedActivityLog: [AgentActivityEvent] = []
     private(set) var displayedTodayTokens = 0
     var weatherCity: String { weatherSettings.city }
-    var usesWeatherRightEdge: Bool { UserDefaults.standard.bool(forKey: "didMigrateWeatherRightEdgeV2") }
+    var usesWeatherLeftEdge: Bool { UserDefaults.standard.bool(forKey: "didMigrateWeatherLeftEdgeV3") }
     var onChange: (() -> Void)?
 
     var runtimeSource: RuntimeSource {
@@ -1073,13 +1074,13 @@ final class DashboardModel: NSObject {
         notifyChange()
     }
 
-    func migrateWeatherRightEdge(to rightEdge: CGFloat) {
-        guard !usesWeatherRightEdge else { return }
+    func migrateWeatherLeftEdge(to leftEdge: CGFloat) {
+        guard !usesWeatherLeftEdge else { return }
         var style = styles.style(for: .weatherCity)
-        style.x = rightEdge
+        style.x = leftEdge
         styles.setStyle(style, for: .weatherCity)
         styles.save()
-        UserDefaults.standard.set(true, forKey: "didMigrateWeatherRightEdgeV2")
+        UserDefaults.standard.set(true, forKey: "didMigrateWeatherLeftEdgeV3")
     }
 
     func resetStyles() {

@@ -397,7 +397,8 @@ struct PixelPainter {
             "z": bolt,
             "?": PixelPalette.violet
         ]
-        drawPixelSprite(sprite, at: point, scale: scale, palette: palette, context: context)
+        let topAlignedSprite = Array(sprite.drop { row in row.allSatisfy { $0 == "." } })
+        drawPixelSprite(topAlignedSprite, at: point, scale: scale, palette: palette, context: context)
     }
 
     private static func drawPixelSprite(_ rows: [String], at point: CGPoint, scale: CGFloat, palette: [Character: NSColor], context: CGContext) {
@@ -511,6 +512,37 @@ struct PixelPainter {
         context.interpolationQuality = interpolation
         context.draw(image, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
+    }
+
+    /// Returns the transparent padding above the first visible source pixel as
+    /// a fraction of the image height. Project weather assets are decoded by
+    /// ImageIO as 8-bit RGBA, so inspecting their alpha channel avoids changing
+    /// the artwork's scale while allowing the setting's Y value to anchor the
+    /// visible top edge.
+    static func normalizedTransparentTopInset(of image: CGImage) -> CGFloat {
+        guard image.height > 0,
+              image.bitsPerComponent == 8,
+              image.bitsPerPixel == 32,
+              let data = image.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else { return 0 }
+
+        let alphaOffset: Int
+        switch image.alphaInfo {
+        case .premultipliedFirst, .first, .alphaOnly:
+            alphaOffset = 0
+        case .premultipliedLast, .last:
+            alphaOffset = 3
+        default:
+            return 0
+        }
+
+        for y in 0..<image.height {
+            let row = bytes.advanced(by: y * image.bytesPerRow)
+            for x in 0..<image.width where row[x * 4 + alphaOffset] > 3 {
+                return CGFloat(y) / CGFloat(image.height)
+            }
+        }
+        return 0
     }
 
     static func drawDefaultBackdrop(width: CGFloat, height: CGFloat, context: CGContext) {

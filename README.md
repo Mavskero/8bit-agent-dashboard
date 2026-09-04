@@ -19,7 +19,7 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather、Music、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等元素。天气的 X 表示最后一个字符的右边界，天气名称变长时会向左展开。音乐区的波浪动画、`NOW PLAYING`、歌名和歌手各有独立设置；每一项都支持 X/Y 画布坐标、字号或图形尺寸、颜色，文字项还支持字体和平滑渲染。面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather、Music、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等元素。天气文字的 X 是左边界；当前天气名称统一为 3–7 个字符的短名称。天气图标的 Y 锚定素材最上方的可见像素，因此切换含不同透明边距的素材时不会上下跳动。音乐区的波浪动画、`NOW PLAYING`、歌名和歌手各有独立设置；每一项都支持 X/Y 画布坐标、字号或图形尺寸、颜色，文字项还支持字体和平滑渲染。没有歌曲播放时歌名显示 `-`，歌手留空，波浪仍持续播放。面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixelon`：随 App 打包的像素字体，项目内使用该字体的默认文字无需依赖系统预装字体

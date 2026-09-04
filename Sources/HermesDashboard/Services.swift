@@ -1498,6 +1498,11 @@ private struct HermesSnapshot {
             }
             guard let event, !event.text.isEmpty, seen.insert(event.id).inserted else { continue }
             events.append(event)
+            if event.kind == .approval {
+                // Message-based approval requests do not have a tool call ID.
+                // Keep them visible until the next user turn starts.
+                pendingApprovalEventIDs.insert(event.id)
+            }
             if events.count > 40 { events.removeFirst(events.count - 40) }
         }
 
@@ -1565,6 +1570,9 @@ private struct HermesSnapshot {
         case "agentmessage":
             let text = extractCodexText(item["content"])
             let phase = (item["phase"] as? String ?? "").lowercased()
+            if isProgramAuthorizationMessage(text) {
+                return AgentActivityEvent(id: "codex:\(itemID):approval", kind: .approval, text: compactActivityText(text, limit: 110))
+            }
             if phase == "final_answer" {
                 return AgentActivityEvent(id: "codex:\(itemID):output", kind: .reply, text: String(text.prefix(12_000)), summarizeBeforeDisplay: true)
             }
@@ -1588,6 +1596,9 @@ private struct HermesSnapshot {
             guard (payload["role"] as? String)?.lowercased() == "assistant" else { return nil }
             let text = extractCodexText(payload["content"])
             let phase = (payload["phase"] as? String ?? "").lowercased()
+            if isProgramAuthorizationMessage(text) {
+                return AgentActivityEvent(id: "codex:\(itemID):approval", kind: .approval, text: compactActivityText(text, limit: 110))
+            }
             if phase == "final_answer" {
                 return AgentActivityEvent(id: "codex:\(itemID):output", kind: .reply, text: String(text.prefix(12_000)), summarizeBeforeDisplay: true)
             }
@@ -1609,11 +1620,36 @@ private struct HermesSnapshot {
 
     private func isApprovalRequest(_ payload: [String: Any]) -> Bool {
         let type = (payload["type"] as? String ?? "").lowercased()
-        if ["request_approval", "approval_request", "permission_request"].contains(type) { return true }
+        let compactType = type.filter(\.isLetter)
+        if ["requestapproval", "approvalrequest", "permissionrequest"].contains(compactType) { return true }
         guard type == "custom_tool_call" || type == "function_call" else { return false }
+        let name = (payload["name"] as? String ?? "").lowercased()
         let input = payload["input"] as? String ?? ""
         let normalized = input.lowercased()
-        return normalized.contains("sandbox_permissions") && normalized.contains("require_escalated")
+        if normalized.contains("sandbox_permissions") && normalized.contains("require_escalated") {
+            return true
+        }
+        return name.contains("request_user_input") && isProgramAuthorizationMessage(input)
+    }
+
+    private func isProgramAuthorizationMessage(_ text: String) -> Bool {
+        let normalized = text.lowercased()
+        let directRequestMarkers = [
+            "是否允许", "请允许", "允许我", "请确认是否", "是否同意",
+            "需要你授权", "需要你的授权", "需要你的确认", "需要您确认",
+            "请你确认", "请您确认", "是否继续", "可以继续吗", "授权后我", "等待你的授权",
+            "do you want me to", "would you like me to", "may i ", "can i ",
+            "please allow", "please authorize", "please confirm", "need your permission",
+            "need you to confirm", "waiting for your approval"
+        ]
+        guard directRequestMarkers.contains(where: normalized.contains) else { return false }
+        let programMarkers = [
+            "应用", "程序", "软件", "窗口", "浏览器", "客户端",
+            "打开", "启动", "运行", "操作", "控制", "访问", "点击", "输入", "关闭", "退出",
+            " app", "application", "program", "window", "browser", "client",
+            "open", "launch", "run", "operate", "control", "access", "click", "type", "quit"
+        ]
+        return programMarkers.contains(where: normalized.contains)
     }
 
     private func extractCodexText(_ value: Any?) -> String {
