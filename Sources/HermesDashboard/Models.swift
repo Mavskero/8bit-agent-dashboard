@@ -431,11 +431,11 @@ extension NSColor {
         let green = CGFloat((value >> (cleaned.count == 8 ? 16 : 8)) & 0xFF) / 255
         let blue = CGFloat((value >> (cleaned.count == 8 ? 8 : 0)) & 0xFF) / 255
         let alpha = cleaned.count == 8 ? CGFloat(value & 0xFF) / 255 : 1
-        self.init(calibratedRed: red, green: green, blue: blue, alpha: alpha)
+        self.init(srgbRed: red, green: green, blue: blue, alpha: alpha)
     }
 
     var hexString: String {
-        guard let rgb = usingColorSpace(.deviceRGB) else { return "FFFFFF" }
+        guard let rgb = usingColorSpace(.sRGB) else { return "FFFFFF" }
         let red = Int(round(rgb.redComponent * 255))
         let green = Int(round(rgb.greenComponent * 255))
         let blue = Int(round(rgb.blueComponent * 255))

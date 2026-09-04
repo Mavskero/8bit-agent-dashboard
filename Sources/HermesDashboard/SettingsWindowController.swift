@@ -518,7 +518,7 @@ private final class StyleRow: NSView {
         // NSColorWell may deliver its action asynchronously after assignment.
         colorWell.target = nil
         colorWell.color = NSColor(
-            calibratedRed: CGFloat(values[0]) / 255,
+            srgbRed: CGFloat(values[0]) / 255,
             green: CGFloat(values[1]) / 255,
             blue: CGFloat(values[2]) / 255,
             alpha: 1
@@ -538,13 +538,13 @@ private final class StyleRow: NSView {
         }
     }
     private func currentColorRGBValues() -> [Int] {
-        guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return [] }
+        guard let rgb = colorWell.color.usingColorSpace(.sRGB) else { return [] }
         return [rgb.redComponent, rgb.greenComponent, rgb.blueComponent].map { component in
             Int(round(component * 255))
         }
     }
     private func syncRGBFields() {
-        guard let rgb = colorWell.color.usingColorSpace(.deviceRGB) else { return }
+        guard let rgb = colorWell.color.usingColorSpace(.sRGB) else { return }
         redField.stringValue = String(Int(round(rgb.redComponent * 255)))
         greenField.stringValue = String(Int(round(rgb.greenComponent * 255)))
         blueField.stringValue = String(Int(round(rgb.blueComponent * 255)))
@@ -852,6 +852,7 @@ private final class RuntimeColorSettingsWindowController: NSWindowController, NS
     private weak var parentWindow: NSWindow?
     private let showColorPanel: (NSColorWell) -> Void
     private var rows: [RuntimeIconKey: (automatic: NSButton, well: DashboardColorWell, hex: NSTextField)] = [:]
+    private var ignoredProgrammaticColors: [Int: String] = [:]
 
     init(model: DashboardModel, parentWindow: NSWindow?, showColorPanel: @escaping (NSColorWell) -> Void) {
         self.model = model
@@ -948,8 +949,11 @@ private final class RuntimeColorSettingsWindowController: NSWindowController, NS
         for (key, row) in rows {
             row.automatic.state = model.layout.runtimeValueColors[key.rawValue] == nil ? .on : .off
             let color = model.runtimeValueColor(for: key)
+            ignoredProgrammaticColors[row.well.tag] = color.hexString
+            row.well.target = nil
             row.well.color = color
-            row.hex.stringValue = color.hexString
+            row.well.target = self
+            row.hex.stringValue = model.layout.runtimeValueColors[key.rawValue] ?? color.hexString
         }
     }
 
@@ -967,8 +971,13 @@ private final class RuntimeColorSettingsWindowController: NSWindowController, NS
 
     @objc private func colorChanged(_ sender: NSColorWell) {
         let key = RuntimeIconKey.allCases[sender.tag]
-        // Assigning a color during reload must not turn Auto into an override.
-        guard sender.color.hexString != model.runtimeValueColor(for: key).hexString else { return }
+        // NSColorWell can send its action after a programmatic reload. Consume
+        // that exact echo so it cannot create an override on another refresh.
+        let hex = sender.color.hexString
+        if ignoredProgrammaticColors[sender.tag] == hex {
+            ignoredProgrammaticColors.removeValue(forKey: sender.tag)
+            return
+        }
         save(sender.color, for: key)
     }
 
