@@ -756,7 +756,10 @@ private final class PlanUsageSettingsWindowController: NSWindowController, NSWin
         addField("Plan display name", key: "planLabel", value: "", y: 312, to: content)
         addField("Usage bucket ID", key: "limitID", value: "", y: 272, to: content)
         addField("Codex executable", key: "codexExecutable", value: "", y: 232, to: content)
-        addField("Refresh interval (min)", key: "refreshInterval", value: "", y: 192, to: content)
+        let schedule = label("BALANCE refresh: 10 min  ·  RESET refresh: 60 min", size: 11, bold: true)
+        schedule.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
+        schedule.frame = NSRect(x: 28, y: 196, width: 590, height: 18)
+        content.addSubview(schedule)
         let note = NSTextField(wrappingLabelWithString: "ChatGPT OAuth is handled by the official Codex app-server and uses the same account as Codex. Tokens are stored and refreshed by Codex; Hermes Dashboard only reads the selected quota window. Leave the plan name blank to use the account plan type.")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
@@ -819,9 +822,8 @@ private final class PlanUsageSettingsWindowController: NSWindowController, NSWin
         fields["planLabel"]?.stringValue = settings.planLabel
         fields["limitID"]?.stringValue = settings.limitID
         fields["codexExecutable"]?.stringValue = settings.codexExecutable
-        fields["refreshInterval"]?.stringValue = String(Int(settings.refreshInterval / 60))
         let identity = model.planUsage.email ?? "No ChatGPT account"
-        statusLabel.stringValue = "\(identity) · \(model.planUsage.status) · \(model.planUsage.allowanceText) · reset \(model.planUsage.resetCountdown())"
+        statusLabel.stringValue = "\(identity) · \(model.planUsage.status) · \(model.planUsage.allowanceText) · RESET \(model.planUsage.resetCountdown())"
     }
 
     private func saveFieldsAndRefresh() {
@@ -829,8 +831,7 @@ private final class PlanUsageSettingsWindowController: NSWindowController, NSWin
         settings.planLabel = fields["planLabel"]?.stringValue ?? settings.planLabel
         settings.limitID = fields["limitID"]?.stringValue ?? settings.limitID
         settings.codexExecutable = fields["codexExecutable"]?.stringValue ?? settings.codexExecutable
-        let minutes = Double(fields["refreshInterval"]?.stringValue ?? "") ?? settings.refreshInterval / 60
-        settings.refreshInterval = minutes * 60
+        settings.refreshInterval = 600
         model.updatePlanUsageSettings(settings)
     }
 }
@@ -838,12 +839,12 @@ private final class PlanUsageSettingsWindowController: NSWindowController, NSWin
 private final class RuntimeIconSettingsWindowController: NSWindowController, NSWindowDelegate {
     private let model: DashboardModel
     private weak var parentWindow: NSWindow?
-    private var rows: [(RuntimeIconKey, NSPopUpButton, NSTextField, NSTextField, NSTextField)] = []
+    private var rows: [(RuntimeIconKey, NSPopUpButton, NSTextField, NSTextField, NSTextField, NSTextField)] = []
 
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 370), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 730, height: 390), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Runtime Status Icons"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
@@ -877,8 +878,15 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
         let title = NSTextField(labelWithString: "RUNTIME STATUS ICONS")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 326, width: 500, height: 26)
+        title.frame = NSRect(x: 28, y: 346, width: 500, height: 26)
         content.addSubview(title)
+        for (text, x, width) in [("SOURCE", CGFloat(145), CGFloat(150)), ("X", 320, 60), ("Y", 390, 60), ("SIZE", 460, 60), ("CUSTOM FILE", 530, 170)] {
+            let heading = NSTextField(labelWithString: text)
+            heading.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
+            heading.textColor = NSColor.secondaryLabelColor
+            heading.frame = NSRect(x: x, y: 318, width: width, height: 16)
+            content.addSubview(heading)
+        }
         for (index, key) in RuntimeIconKey.allCases.enumerated() {
             let y = 282 - CGFloat(index) * 36
             let label = NSTextField(labelWithString: key.displayName)
@@ -897,30 +905,34 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
                 popup.selectItem(at: current.pattern)
             }
             content.addSubview(popup)
-            let x = NSTextField(string: format(current.x))
-            x.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-            x.frame = NSRect(x: 320, y: y, width: 70, height: 26)
-            content.addSubview(x)
+            let xField = NSTextField(string: format(current.x))
+            xField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            xField.frame = NSRect(x: 320, y: y, width: 60, height: 26)
+            content.addSubview(xField)
             let yField = NSTextField(string: format(current.y))
             yField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-            yField.frame = NSRect(x: 410, y: y, width: 70, height: 26)
+            yField.frame = NSRect(x: 390, y: y, width: 60, height: 26)
             content.addSubview(yField)
+            let sizeField = NSTextField(string: format(current.size))
+            sizeField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            sizeField.frame = NSRect(x: 460, y: y, width: 60, height: 26)
+            content.addSubview(sizeField)
             let path = NSTextField(string: current.name.hasPrefix("file:") ? String(current.name.dropFirst(5)) : "")
             path.font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
             path.placeholderString = "PNG/GIF path for Custom file"
-            path.frame = NSRect(x: 490, y: y, width: 115, height: 26)
+            path.frame = NSRect(x: 530, y: y, width: 170, height: 26)
             content.addSubview(path)
-            rows.append((key, popup, x, yField, path))
+            rows.append((key, popup, xField, yField, sizeField, path))
         }
         let apply = NSButton(title: "Apply", target: self, action: #selector(apply(_:)))
         apply.bezelStyle = .rounded
-        apply.frame = NSRect(x: 500, y: 18, width: 90, height: 28)
+        apply.frame = NSRect(x: 610, y: 18, width: 90, height: 28)
         content.addSubview(apply)
     }
 
     @objc private func apply(_ sender: NSButton) {
         var layout = model.layout
-        for (key, popup, x, y, path) in rows {
+        for (key, popup, x, y, size, path) in rows {
             let name: String
             switch popup.indexOfSelectedItem {
             case 0..<6:
@@ -931,7 +943,8 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
                 let customPath = path.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 name = customPath.isEmpty ? (layout.runtimeIcons[key.rawValue]?.name ?? "pattern-0") : "file:\(customPath)"
             }
-            layout.runtimeIcons[key.rawValue] = RuntimeIconStyle(name: name, x: CGFloat(Double(x.stringValue) ?? 28), y: CGFloat(Double(y.stringValue) ?? 5))
+            let iconSize = min(max(CGFloat(Double(size.stringValue) ?? 24), 8), 96)
+            layout.runtimeIcons[key.rawValue] = RuntimeIconStyle(name: name, x: CGFloat(Double(x.stringValue) ?? 28), y: CGFloat(Double(y.stringValue) ?? 5), size: iconSize)
         }
         model.updateLayout(layout)
         window?.close()

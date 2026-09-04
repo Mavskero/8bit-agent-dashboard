@@ -52,14 +52,14 @@ hermes-done.png         hermes-error.png
 
 ## Runtime Status 数据
 
-Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、ChatGPT 套餐、套餐周剩余额度、下次重置倒计时和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`。thinking 与套餐剩余比例会分别按强度和余量使用不同颜色。
+Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、ChatGPT 套餐、套餐周剩余额度、下次重置倒计时和今日已结束 Codex session 的累计 Tokens。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；session 卡片继续显示各会话的上下文占用。thinking 与套餐剩余比例会分别按强度和余量使用不同颜色。
 Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保留上一轮真实模型名。
 
-选择 `Codex Desktop` 后，左下角标题会切换为 `CODEX AGENT`，并从当前 Codex rollout 提取思考、工具、文件修改、搜索、状态、错误和最终输出。信息统一显示为 `[THINKING]`、`[TOOLS]`、`[FILES]`、`[SEARCH]`、`[STATUS]`、`[ERROR]`、`[RESULT]`、`[OUTPUT]`，标签各用不同颜色，正文只保留简短语义描述；Shell 参数和长控制命令不会直接显示。相邻同类活动会合并，文字通过队列逐字出现。
+选择 `Codex Desktop` 后，左下角标题会切换为 `CODEX AGENT`，并从当前 Codex rollout 提取思考、工具、文件修改、搜索、状态、错误和最终输出。信息统一显示为 `[THINKING]`、`[TOOLS]`、`[FILES]`、`[SEARCH]`、`[STATUS]`、`[ERROR]`、`[RESULT]`、`[OUTPUT]`，标签各用不同颜色，正文只保留简短语义描述；Shell 参数和长控制命令不会直接显示。相邻同类活动会合并，文字以每帧四个字符的速度快速逐字出现。
 
-最终输出不会直接进入信息流。Dashboard 会先通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）按不超过 100 个字符的规则生成纯文本摘要，再以 `[OUTPUT]` 流式显示。摘要在独立后台队列运行；模型不可用或超时时会显示 `[ERROR]`，随后使用本地截断结果，避免活动面板阻塞。
+最终输出不会直接进入信息流。Dashboard 会先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）生成不超过 100 个字符的纯文本摘要。摘要完成后会清空此前的思考和工具过程，只以 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称，模型不可用时使用本地精简结果。
 
-主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示剩余额度，并使用服务端 `resetsAt` 计算实时倒计时。可配置显示名称、bucket ID、Codex 可执行文件和刷新间隔；`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。读取失败时保留上次成功的周余额与重置时间。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置仍支持切回六种内置图案或选择自定义 PNG/GIF，并可独立设置 X/Y。`TITLE / CONTENT GAP` 控制标题与第一行的间距，`ICON / TITLE GAP` 控制图标与行标题的间距。
+主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。
 
 `Weather Settings…` 可以选择天气源和天气图标包，并设置图标的 X/Y 位置与 24–384 px 显示尺寸。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
 

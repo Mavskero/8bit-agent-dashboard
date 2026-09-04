@@ -249,22 +249,24 @@ final class DashboardView: NSView {
             (.thinking, "THINKING", model.runtime.thinking, thinkingColor(model.runtime.thinking)),
             (.fastMode, "FASTMODE", model.runtime.fastMode ? "ON" : "OFF", PixelPalette.cyan),
             (.provider, "PLAN", model.runtime.provider, PixelPalette.cyan),
-            (.balance, "PLAN BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
-            (.reset, "NEXT RESET", model.planUsage.resetCountdown(), PixelPalette.violet),
-            (.tokens, "TOKENS", "\(model.runtime.tokenPercent)%", PixelPalette.cyan)
+            (.balance, "BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
+            (.reset, "RESET", model.planUsage.resetCountdown(), PixelPalette.violet),
+            (.tokens, "TOKENS", formattedTokenCount(model.displayedTodayTokens), PixelPalette.cyan)
         ]
 
         for (index, row) in rows.enumerated() {
             let rowY = origin.y + 22 + runtimeStyle.pointSize + model.layout.runtimeTitleSpacing + CGFloat(index) * 32
             let icon = model.layout.runtimeIcons[row.0.rawValue] ?? DashboardLayout.defaultRuntimeIcons[row.0.rawValue]!
+            let iconSize = min(max(icon.size, 8), 96)
             if let custom = runtimeIconImage(style: icon) {
-                PixelPainter.drawAsset(custom, in: CGRect(x: origin.x + icon.x, y: rowY + icon.y, width: 24, height: 24), context: context)
+                PixelPainter.drawAsset(custom, in: CGRect(x: origin.x + icon.x, y: rowY + icon.y, width: iconSize, height: iconSize), context: context)
             } else {
-                PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + icon.x, y: rowY + icon.y), kind: icon.pattern, color: row.3, context: context)
+                PixelPainter.drawStatusIcon(at: CGPoint(x: origin.x + icon.x, y: rowY + icon.y), size: iconSize, kind: icon.pattern, color: row.3, context: context)
             }
             var rowStyle = model.styles.style(for: .runtime)
             rowStyle.pointSize *= 0.72
-            let labelX = origin.x + icon.x + 24 + model.layout.runtimeIconTitleSpacing
+            let defaultIconX = DashboardLayout.defaultRuntimeIcons[row.0.rawValue]?.x ?? 28
+            let labelX = origin.x + defaultIconX + 24 + model.layout.runtimeIconTitleSpacing
             drawText(row.1, key: .runtime, at: CGPoint(x: labelX, y: rowY + 4), context: context, style: rowStyle)
             PixelPalette.border.setFill()
             let labelEnd = labelX + PixelPainter.textWidth(row.1, style: rowStyle)
@@ -286,6 +288,10 @@ final class DashboardView: NSView {
                 drawText(row.2, key: .runtime, at: CGPoint(x: origin.x + 460 - valueWidth, y: rowY + 4), context: context, style: valueStyle)
             }
         }
+    }
+
+    private func formattedTokenCount(_ value: Int) -> String {
+        NumberFormatter.localizedString(from: NSNumber(value: max(value, 0)), number: .decimal)
     }
 
     private var agentStatusColor: NSColor {

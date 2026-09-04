@@ -244,8 +244,8 @@ enum RuntimeIconKey: String, CaseIterable, Codable {
         case .thinking: return "THINKING"
         case .fastMode: return "FASTMODE"
         case .provider: return "PLAN"
-        case .balance: return "PLAN BALANCE"
-        case .reset: return "NEXT RESET"
+        case .balance: return "BALANCE"
+        case .reset: return "RESET"
         case .tokens: return "TOKENS"
         }
     }
@@ -257,11 +257,25 @@ struct RuntimeIconStyle: Codable, Equatable {
     var name: String
     var x: CGFloat
     var y: CGFloat
+    var size: CGFloat
 
-    init(name: String, x: CGFloat = 28, y: CGFloat = 5) {
+    private enum CodingKeys: String, CodingKey {
+        case name, x, y, size
+    }
+
+    init(name: String, x: CGFloat = 28, y: CGFloat = 5, size: CGFloat = 24) {
         self.name = name
         self.x = x
         self.y = y
+        self.size = size
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        x = try container.decodeIfPresent(CGFloat.self, forKey: .x) ?? 28
+        y = try container.decodeIfPresent(CGFloat.self, forKey: .y) ?? 5
+        size = try container.decodeIfPresent(CGFloat.self, forKey: .size) ?? 24
     }
 
     var pattern: Int {
@@ -586,7 +600,7 @@ struct PlanUsageSettings: Codable, Equatable {
             planLabel: "",
             limitID: "codex",
             codexExecutable: executable,
-            refreshInterval: 1800,
+            refreshInterval: 600,
             lastRemainingPercent: nil,
             lastResetAt: nil,
             lastPlanType: nil,
@@ -597,7 +611,7 @@ struct PlanUsageSettings: Codable, Equatable {
     static func load() -> PlanUsageSettings {
         guard let data = UserDefaults.standard.data(forKey: "planUsageSettings"),
               var value = try? JSONDecoder().decode(PlanUsageSettings.self, from: data) else { return .defaults }
-        value.refreshInterval = min(max(value.refreshInterval, 60), 86_400)
+        value.refreshInterval = 600
         return value
     }
 
@@ -809,6 +823,8 @@ struct RuntimeStatus {
     var balanceValue: Double?
     var resetCountdown: String = "UNAVAILABLE"
     var tokenPercent: Int
+    var todayTokens: Int = 0
+    var hasTodayTokenData: Bool = false
     var activeSession: String
     var elapsed: String
     var contextPercent: Int
@@ -829,6 +845,8 @@ struct RuntimeStatus {
             balance: "$18.42",
             balanceValue: 18.42,
             tokenPercent: 72,
+            todayTokens: 0,
+            hasTodayTokenData: false,
             activeSession: "Refactor telemetry pipeline",
             elapsed: "08:41",
             contextPercent: 68,
@@ -865,6 +883,10 @@ struct RuntimeStatus {
             merged.tokenPercent = previous.tokenPercent
             merged.sessions = previous.sessions
         }
+        if !hasTodayTokenData {
+            merged.todayTokens = previous.todayTokens
+            merged.hasTodayTokenData = previous.hasTodayTokenData
+        }
         if activeSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             merged.activeSession = previous.activeSession
         }
@@ -888,6 +910,7 @@ final class DashboardModel: NSObject {
     private(set) var weatherSettings: WeatherSettings
     private(set) var assetStore: DashboardAssetStore
     private(set) var streamedActivityLog: [AgentActivityEvent] = []
+    private(set) var displayedTodayTokens = 0
     var weatherCity: String { weatherSettings.city }
     var onChange: (() -> Void)?
 
@@ -895,6 +918,7 @@ final class DashboardModel: NSObject {
         didSet {
             UserDefaults.standard.set(runtimeSource.rawValue, forKey: Keys.runtimeSource)
             resetActivityStream(for: runtimeSource)
+            if runtimeSource != .codex { updateTodayTokensTarget(0, hasData: true) }
             refreshRuntime()
         }
     }
@@ -919,6 +943,10 @@ final class DashboardModel: NSObject {
     private var planUsageTimer: Timer?
     private var weatherTimer: Timer?
     private var activityStreamTimer: Timer?
+    private var tokenAnimationTimer: Timer?
+    private var lastBalanceRefreshAttempt: Date?
+    private var lastResetRefreshAttempt: Date?
+    private var planUsageRequestID: UUID?
     private var activityStreamSource: RuntimeSource?
     private var activityQueue: [AgentActivityEvent] = []
     private var activeActivity: (event: AgentActivityEvent, characters: [Character], revealed: Int)?
@@ -955,7 +983,7 @@ final class DashboardModel: NSObject {
     func start() {
         scheduleActivityStreamTimer()
         refreshAll()
-        refreshPlanUsage()
+        refreshPlanUsage(updateBalance: true, updateReset: true)
         schedulePlanUsageTimer()
         scheduleWeatherTimer()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -972,6 +1000,8 @@ final class DashboardModel: NSObject {
         weatherTimer = nil
         activityStreamTimer?.invalidate()
         activityStreamTimer = nil
+        tokenAnimationTimer?.invalidate()
+        tokenAnimationTimer = nil
     }
 
     func setWallpaper(url: URL?) {
@@ -1021,11 +1051,11 @@ final class DashboardModel: NSObject {
         updated.limitID = updated.limitID.trimmingCharacters(in: .whitespacesAndNewlines)
         if updated.limitID.isEmpty { updated.limitID = "codex" }
         updated.codexExecutable = updated.codexExecutable.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.refreshInterval = min(max(updated.refreshInterval, 60), 86_400)
+        updated.refreshInterval = 600
         planUsageSettings = updated
         updated.save()
         schedulePlanUsageTimer()
-        refreshPlanUsage()
+        refreshPlanUsage(updateBalance: true, updateReset: true)
         applyPlanUsageToRuntime()
         notifyChange()
     }
@@ -1037,7 +1067,7 @@ final class DashboardModel: NSObject {
                 switch result {
                 case .success:
                     completion("Authorization complete")
-                    self.refreshPlanUsage()
+                    self.refreshPlanUsage(updateBalance: true, updateReset: true)
                 case .failure(let error):
                     completion(error.localizedDescription)
                 }
@@ -1093,6 +1123,7 @@ final class DashboardModel: NSObject {
             guard let self else { return }
             guard source == self.runtimeSource else { return }
             self.runtime = status.preservingTransientData(from: self.runtime)
+            self.updateTodayTokensTarget(self.runtime.todayTokens, hasData: self.runtime.hasTodayTokenData)
             self.updateActivityTarget(self.runtime.activityLog, source: source)
             self.applyPlanUsageToRuntime()
             self.notifyChange()
@@ -1101,7 +1132,7 @@ final class DashboardModel: NSObject {
 
     private func scheduleActivityStreamTimer() {
         activityStreamTimer?.invalidate()
-        activityStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.035, repeats: true) { [weak self] _ in
+        activityStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
             self?.advanceActivityStream()
         }
     }
@@ -1169,14 +1200,14 @@ final class DashboardModel: NSObject {
         }
 
         guard var typing = activeActivity else { return }
-        typing.revealed = min(typing.revealed + 1, typing.characters.count)
+        typing.revealed = min(typing.revealed + 4, typing.characters.count)
         if let index = streamedActivityLog.lastIndex(where: { $0.id == typing.event.id }) {
             streamedActivityLog[index].text = String(typing.characters.prefix(typing.revealed))
         }
         if typing.revealed >= typing.characters.count {
             completedActivityIDs.insert(typing.event.id)
             activeActivity = nil
-            activityPauseTicks = 3
+            activityPauseTicks = 1
         } else {
             activeActivity = typing
         }
@@ -1185,9 +1216,8 @@ final class DashboardModel: NSObject {
 
     private func schedulePlanUsageTimer() {
         planUsageTimer?.invalidate()
-        let interval = min(max(planUsageSettings.refreshInterval, 60), 86_400)
-        planUsageTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.refreshPlanUsage()
+        planUsageTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.refreshPlanUsageIfNeeded()
         }
     }
 
@@ -1199,24 +1229,71 @@ final class DashboardModel: NSObject {
         }
     }
 
-    func refreshPlanUsage() {
+    private func refreshPlanUsageIfNeeded(now: Date = Date()) {
+        let balanceDue = lastBalanceRefreshAttempt.map { now.timeIntervalSince($0) >= 600 } ?? true
+        let resetDue = lastResetRefreshAttempt.map { now.timeIntervalSince($0) >= 3_600 } ?? true
+        guard balanceDue || resetDue else { return }
+        refreshPlanUsage(updateBalance: balanceDue, updateReset: resetDue, now: now)
+    }
+
+    func refreshPlanUsage(updateBalance: Bool = true, updateReset: Bool = true, now: Date = Date()) {
+        guard updateBalance || updateReset else { return }
+        let requestID = UUID()
+        planUsageRequestID = requestID
+        if updateBalance { lastBalanceRefreshAttempt = now }
+        if updateReset { lastResetRefreshAttempt = now }
         let settings = planUsageSettings
         planUsageService.fetch(settings: settings) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.planUsageRequestID == requestID else { return }
+                self.planUsageRequestID = nil
                 switch result {
                 case .success(let snapshot):
-                    self.planUsage = snapshot
-                    self.planUsageSettings.lastRemainingPercent = snapshot.remainingPercent
-                    self.planUsageSettings.lastResetAt = snapshot.resetsAt
+                    self.planUsage.authenticated = snapshot.authenticated
+                    self.planUsage.planType = snapshot.planType
+                    self.planUsage.email = snapshot.email
+                    self.planUsage.windowDurationMinutes = snapshot.windowDurationMinutes
+                    self.planUsage.status = snapshot.status
                     self.planUsageSettings.lastPlanType = snapshot.planType
                     self.planUsageSettings.lastEmail = snapshot.email
+                    if updateBalance {
+                        self.planUsage.remainingPercent = snapshot.remainingPercent
+                        self.planUsageSettings.lastRemainingPercent = snapshot.remainingPercent
+                    }
+                    if updateReset {
+                        self.planUsage.resetsAt = snapshot.resetsAt
+                        self.planUsageSettings.lastResetAt = snapshot.resetsAt
+                    }
                     self.planUsageSettings.save()
                 case .failure(let error):
                     self.planUsage.status = error.localizedDescription
                 }
                 self.applyPlanUsageToRuntime()
                 self.notifyChange()
+            }
+        }
+    }
+
+    private func updateTodayTokensTarget(_ target: Int, hasData: Bool) {
+        guard hasData else { return }
+        let safeTarget = max(target, 0)
+        guard displayedTodayTokens != safeTarget else { return }
+        tokenAnimationTimer?.invalidate()
+        let startValue = displayedTodayTokens
+        let difference = safeTarget - startValue
+        let startedAt = Date()
+        let duration: TimeInterval = 0.85
+        tokenAnimationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let progress = min(max(Date().timeIntervalSince(startedAt) / duration, 0), 1)
+            let eased = 1 - pow(1 - progress, 3)
+            self.displayedTodayTokens = startValue + Int((Double(difference) * eased).rounded())
+            self.notifyChange()
+            if progress >= 1 {
+                self.displayedTodayTokens = safeTarget
+                timer.invalidate()
+                self.tokenAnimationTimer = nil
             }
         }
     }

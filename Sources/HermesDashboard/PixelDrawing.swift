@@ -409,9 +409,9 @@ struct PixelPainter {
         }
     }
 
-    static func drawStatusIcon(at point: CGPoint, kind: Int, color: NSColor, context: CGContext) {
+    static func drawStatusIcon(at point: CGPoint, size: CGFloat = 24, kind: Int, color: NSColor, context: CGContext) {
         color.setFill()
-        let s: CGFloat = 3
+        let s = max(size / 7, 1)
         switch kind % 6 {
         case 0:
             for row in 0..<7 { for column in 0..<7 where row == 0 || row == 6 || column == 0 || column == 6 || (row >= 2 && row <= 4 && column >= 2 && column <= 4) { context.fill(CGRect(x: point.x + CGFloat(column) * s, y: point.y + CGFloat(row) * s, width: s, height: s)) } }

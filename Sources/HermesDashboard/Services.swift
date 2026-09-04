@@ -302,7 +302,6 @@ private final class ProcessRunner {
 
 private struct LocalSummaryResult {
     var text: String
-    var usedQwen: Bool
 }
 
 private final class LocalQwenSummaryService {
@@ -329,9 +328,9 @@ private final class LocalQwenSummaryService {
         let cleaned = cleanSummary(output)
         let result: LocalSummaryResult
         if cleaned.isEmpty {
-            result = LocalSummaryResult(text: compactFallback(text), usedQwen: false)
+            result = LocalSummaryResult(text: compactFallback(text))
         } else {
-            result = LocalSummaryResult(text: String(cleaned.prefix(100)), usedQwen: true)
+            result = LocalSummaryResult(text: String(cleaned.prefix(100)))
         }
         cache[id] = result
         if cache.count > 32, let first = cache.keys.first { cache.removeValue(forKey: first) }
@@ -833,6 +832,7 @@ private struct CodexSnapshot {
     var activityLog: [AgentActivityEvent]
     var agentState: AgentState
     var contextPercent: Int
+    var todayTokens: Int
     var model: String?
     var thinking: String?
     var fastMode: Bool?
@@ -862,7 +862,7 @@ final class RuntimeStatusService {
         updated.activityLog.removeAll { $0.summarizeBeforeDisplay }
         guard let result = completedSummaries[finalEvent.id] else {
             updated.agentState = .thinking
-            updated.activityLog.append(AgentActivityEvent(id: "\(finalEvent.id):qwen-pending", kind: .status, text: "Qwen 3.5 2B 正在总结最终结果"))
+            updated.activityLog.append(AgentActivityEvent(id: "\(finalEvent.id):summary-pending", kind: .status, text: "正在总结输出结果"))
             if pendingSummaries.insert(finalEvent.id).inserted {
                 summaryQueue.async {
                     let result = self.qwenSummaryService.summarize(id: finalEvent.id, text: finalEvent.text)
@@ -877,16 +877,10 @@ final class RuntimeStatusService {
             }
             return updated
         }
-        let markerID = "\(finalEvent.id):qwen"
-        if result.usedQwen {
-            updated.activityLog.append(AgentActivityEvent(id: markerID, kind: .status, text: "Qwen 3.5 2B 已总结最终结果"))
-        } else {
-            updated.activityLog.append(AgentActivityEvent(id: markerID, kind: .error, text: "Qwen 3.5 2B 摘要失败，已使用本地精简结果"))
-        }
         var summarized = finalEvent
         summarized.text = result.text
         summarized.summarizeBeforeDisplay = false
-        updated.activityLog.append(summarized)
+        updated.activityLog = [summarized]
         return updated
     }
 
@@ -907,6 +901,8 @@ final class RuntimeStatusService {
             status.agentState = codexSnapshot.agentState
             status.sessions = codexSnapshot.sessions
             status.activityLog = codexSnapshot.activityLog
+            status.todayTokens = codexSnapshot.todayTokens
+            status.hasTodayTokenData = true
             if let model = codexSnapshot.model { status.model = model }
             if let thinking = codexSnapshot.thinking { status.thinking = thinking.uppercased() }
             if let fastMode = codexSnapshot.fastMode { status.fastMode = fastMode }
@@ -1250,7 +1246,7 @@ private struct HermesSnapshot {
 
         let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC LIMIT 5;")
         if !catalogRows.isEmpty {
-            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads WHERE archived = 0;")
+            let stateRows = readSQLiteRows(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads;")
             let states = Dictionary(uniqueKeysWithValues: stateRows.compactMap { row -> (String, [String: Any])? in
                 guard let id = row["id"] as? String else { return nil }
                 return (id, row)
@@ -1263,6 +1259,7 @@ private struct HermesSnapshot {
                 let previous = (latestTurns[threadID]?["started_at"] as? NSNumber)?.doubleValue ?? -1
                 if started > previous { latestTurns[threadID] = row }
             }
+            let todayTokens = completedTodayTokens(states: states, latestTurns: latestTurns)
 
             let sessions = catalogRows.compactMap { row -> SessionInfo? in
                 guard let threadID = row["thread_id"] as? String,
@@ -1310,6 +1307,7 @@ private struct HermesSnapshot {
                     activityLog: activityLog,
                     agentState: resolvedAgentState,
                     contextPercent: sessions[0].contextPercent,
+                    todayTokens: todayTokens,
                     model: metadata.model,
                     thinking: metadata.thinking,
                     fastMode: metadata.fastMode,
@@ -1322,7 +1320,21 @@ private struct HermesSnapshot {
         let legacySessions = readLegacyCodexTasks()
         guard !legacySessions.isEmpty else { return nil }
         let metadata = readCodexRuntimeMetadata(state: nil)
-        return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
+        return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, todayTokens: 0, model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
+    }
+
+    private func completedTodayTokens(states: [String: [String: Any]], latestTurns: [String: [String: Any]], now: Date = Date()) -> Int {
+        let startOfDay = Calendar.current.startOfDay(for: now).timeIntervalSince1970
+        var total: Int64 = 0
+        for (threadID, turn) in latestTurns {
+            let status = (turn["status"] as? String ?? "").lowercased()
+            guard ["completed", "failed", "interrupted"].contains(status),
+                  let completedAt = (turn["completed_at"] as? NSNumber)?.doubleValue,
+                  completedAt >= startOfDay,
+                  let tokens = (states[threadID]?["tokens_used"] as? NSNumber)?.int64Value else { continue }
+            total += max(tokens, 0)
+        }
+        return Int(min(total, Int64(Int.max)))
     }
 
     private func readCodexActivity(_ path: String) -> [AgentActivityEvent] {
@@ -1490,7 +1502,7 @@ private struct HermesSnapshot {
         if joined.contains("rg ") || joined.contains("grep ") { return "搜索项目内容" }
         if joined.contains("sed ") || joined.contains("cat ") || joined.contains("nl ") || joined.contains("tail ") || joined.contains("head ") || joined.contains("find ") { return "读取项目文件" }
         if joined.contains("apply_patch") { return "更新项目文件" }
-        if joined.contains("ollama") { return "调用本地 Qwen" }
+        if joined.contains("ollama") { return "处理输出摘要" }
         if joined.contains("curl ") { return "访问本地服务" }
         guard let executable = command.first else { return "执行本地命令" }
         if executable.contains("\n") || executable.contains("exec_command") || executable.count > 100 { return "执行本地命令" }
@@ -1687,6 +1699,8 @@ private struct HermesSnapshot {
             balance: payload.balance ?? demo.balance,
             balanceValue: payload.balanceValue ?? demo.balanceValue,
             tokenPercent: codexSnapshot?.contextPercent ?? clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
+            todayTokens: codexSnapshot?.todayTokens ?? 0,
+            hasTodayTokenData: codexSnapshot != nil,
             activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
             contextPercent: clamp(calculatedContext, min: 0, max: 100),
