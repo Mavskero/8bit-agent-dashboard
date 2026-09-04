@@ -13,6 +13,7 @@ final class DashboardView: NSView {
     private var clockBlinkTimer: Timer?
     private var phase = 0
     private var clockColonVisible = true
+    private var runtimeIconCache: [String: CGImage] = [:]
     private let settingsButton: NSButton = {
         let button = SettingsButton(frame: .zero)
         button.setButtonType(.momentaryPushIn)
@@ -181,11 +182,21 @@ final class DashboardView: NSView {
         // Keep the minute anchor fixed to the full HH:MM geometry even while
         // the separator is hidden, so the minute digits never jump.
         drawText(minute, key: .clock, at: CGPoint(x: clockX + hourWidth + colonWidth, y: 48), context: context)
-        let weatherRect = CGRect(x: 560, y: 48, width: 128, height: 128)
+        let weatherRect = CGRect(
+            x: model.weatherSettings.iconX,
+            y: model.weatherSettings.iconY,
+            width: model.weatherSettings.iconSize,
+            height: model.weatherSettings.iconSize
+        )
         if let weatherImage = model.assetStore.weatherImage(condition: model.weather.condition, iconSet: model.weatherSettings.iconSet, at: CACurrentMediaTime()) {
             PixelPainter.drawAsset(weatherImage, in: weatherRect, context: context)
         } else {
-            PixelPainter.drawWeatherIcon(at: CGPoint(x: 572, y: 48), scale: 8, condition: model.weather.condition, context: context)
+            PixelPainter.drawWeatherIcon(
+                at: CGPoint(x: weatherRect.minX + weatherRect.width * 0.09, y: weatherRect.minY),
+                scale: max(weatherRect.width / 16, 1),
+                condition: model.weather.condition,
+                context: context
+            )
         }
 
         let date = dateFormatter.string(from: now).uppercased()
@@ -237,13 +248,14 @@ final class DashboardView: NSView {
             (.model, "MODEL", model.runtime.model, PixelPalette.cyan),
             (.thinking, "THINKING", model.runtime.thinking, thinkingColor(model.runtime.thinking)),
             (.fastMode, "FASTMODE", model.runtime.fastMode ? "ON" : "OFF", PixelPalette.cyan),
-            (.provider, "PROVIDER", model.runtime.provider, PixelPalette.cyan),
-            (.balance, "BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
+            (.provider, "PLAN", model.runtime.provider, PixelPalette.cyan),
+            (.balance, "PLAN BALANCE", model.runtime.balance, balanceColor(model.runtime.balanceValue)),
+            (.reset, "NEXT RESET", model.planUsage.resetCountdown(), PixelPalette.violet),
             (.tokens, "TOKENS", "\(model.runtime.tokenPercent)%", PixelPalette.cyan)
         ]
 
         for (index, row) in rows.enumerated() {
-            let rowY = origin.y + 22 + runtimeStyle.pointSize + model.layout.runtimeTitleSpacing + CGFloat(index) * 35
+            let rowY = origin.y + 22 + runtimeStyle.pointSize + model.layout.runtimeTitleSpacing + CGFloat(index) * 32
             let icon = model.layout.runtimeIcons[row.0.rawValue] ?? DashboardLayout.defaultRuntimeIcons[row.0.rawValue]!
             if let custom = runtimeIconImage(style: icon) {
                 PixelPainter.drawAsset(custom, in: CGRect(x: origin.x + icon.x, y: rowY + icon.y, width: 24, height: 24), context: context)
@@ -297,16 +309,25 @@ final class DashboardView: NSView {
 
     private func balanceColor(_ value: Double?) -> NSColor {
         guard let value else { return PixelPalette.orange }
-        if value >= 10 { return PixelPalette.green }
-        if value >= 5 { return PixelPalette.yellow }
+        if value >= 50 { return PixelPalette.green }
+        if value >= 20 { return PixelPalette.yellow }
         return PixelPalette.red
     }
 
     private func runtimeIconImage(style: RuntimeIconStyle) -> CGImage? {
-        guard style.name.hasPrefix("file:") else { return nil }
-        let url = URL(fileURLWithPath: String(style.name.dropFirst(5)))
+        if let cached = runtimeIconCache[style.name] { return cached }
+        let url: URL
+        if style.name.hasPrefix("bundle:"), let resourceURL = Bundle.main.resourceURL {
+            url = resourceURL.appendingPathComponent(String(style.name.dropFirst("bundle:".count)))
+        } else if style.name.hasPrefix("file:") {
+            url = URL(fileURLWithPath: String(style.name.dropFirst("file:".count)))
+        } else {
+            return nil
+        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        runtimeIconCache[style.name] = image
+        return image
     }
 
     private func drawBottomArea(context: CGContext) {

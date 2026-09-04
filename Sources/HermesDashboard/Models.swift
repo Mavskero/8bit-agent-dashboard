@@ -236,22 +236,24 @@ struct DashboardModulePosition: Codable, Equatable {
 }
 
 enum RuntimeIconKey: String, CaseIterable, Codable {
-    case model, thinking, fastMode, provider, balance, tokens
+    case model, thinking, fastMode, provider, balance, reset, tokens
 
     var displayName: String {
         switch self {
         case .model: return "MODEL"
         case .thinking: return "THINKING"
         case .fastMode: return "FASTMODE"
-        case .provider: return "PROVIDER"
-        case .balance: return "BALANCE"
+        case .provider: return "PLAN"
+        case .balance: return "PLAN BALANCE"
+        case .reset: return "NEXT RESET"
         case .tokens: return "TOKENS"
         }
     }
 }
 
 struct RuntimeIconStyle: Codable, Equatable {
-    /// Built-in pixel patterns are named pattern-0 through pattern-5.
+    /// Built-in pixel patterns are named pattern-0 through pattern-5. Project
+    /// resources use a bundle: path and user-selected files use a file: path.
     var name: String
     var x: CGFloat
     var y: CGFloat
@@ -332,12 +334,13 @@ struct DashboardLayout: Codable, Equatable {
     }
 
     static let defaultRuntimeIcons: [String: RuntimeIconStyle] = [
-        RuntimeIconKey.model.rawValue: RuntimeIconStyle(name: "pattern-0"),
-        RuntimeIconKey.thinking.rawValue: RuntimeIconStyle(name: "pattern-1"),
-        RuntimeIconKey.fastMode.rawValue: RuntimeIconStyle(name: "pattern-2"),
-        RuntimeIconKey.provider.rawValue: RuntimeIconStyle(name: "pattern-3"),
-        RuntimeIconKey.balance.rawValue: RuntimeIconStyle(name: "pattern-4"),
-        RuntimeIconKey.tokens.rawValue: RuntimeIconStyle(name: "pattern-5")
+        RuntimeIconKey.model.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/01-model.png"),
+        RuntimeIconKey.thinking.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/02-thinking.png"),
+        RuntimeIconKey.fastMode.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/03-fastmode.png"),
+        RuntimeIconKey.provider.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/04-plan.png"),
+        RuntimeIconKey.balance.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/07-plan-balance.png"),
+        RuntimeIconKey.reset.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/08-next-reset.png"),
+        RuntimeIconKey.tokens.rawValue: RuntimeIconStyle(name: "bundle:RuntimeStatusIcons/06-tokens.png")
     ]
 
     static let defaults = DashboardLayout(
@@ -363,6 +366,17 @@ struct DashboardLayout: Codable, Equatable {
         // Other coordinates are user edits and remain untouched.
         if [492, 444, 327, 417, 420].contains(decoded.hermesAgent.y) { decoded.hermesAgent.y = 416 }
         if [492, 444, 327, 417, 420].contains(decoded.activeSession.y) { decoded.activeSession.y = 416 }
+        let migrationKey = "didMigrateBundledRuntimeIcons20260904"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            for key in RuntimeIconKey.allCases {
+                guard var current = decoded.runtimeIcons[key.rawValue], current.name.hasPrefix("pattern-"),
+                      let bundled = defaultRuntimeIcons[key.rawValue] else { continue }
+                current.name = bundled.name
+                decoded.runtimeIcons[key.rawValue] = current
+            }
+            decoded.save()
+            UserDefaults.standard.set(true, forKey: migrationKey)
+        }
         return decoded
     }
 
@@ -478,18 +492,24 @@ struct WeatherSettings: Codable, Equatable {
     var apiKey: String
     var city: String
     var refreshInterval: TimeInterval
+    var iconX: CGFloat
+    var iconY: CGFloat
+    var iconSize: CGFloat
 
     private enum CodingKeys: String, CodingKey {
-        case source, iconSet, apiHost, city, refreshInterval
+        case source, iconSet, apiHost, city, refreshInterval, iconX, iconY, iconSize
     }
 
-    init(source: WeatherSource, iconSet: WeatherIconSet, apiHost: String, apiKey: String, city: String, refreshInterval: TimeInterval) {
+    init(source: WeatherSource, iconSet: WeatherIconSet, apiHost: String, apiKey: String, city: String, refreshInterval: TimeInterval, iconX: CGFloat = 560, iconY: CGFloat = 48, iconSize: CGFloat = 128) {
         self.source = source
         self.iconSet = iconSet
         self.apiHost = apiHost
         self.apiKey = apiKey
         self.city = city
         self.refreshInterval = refreshInterval
+        self.iconX = iconX
+        self.iconY = iconY
+        self.iconSize = iconSize
     }
 
     init(from decoder: Decoder) throws {
@@ -499,6 +519,9 @@ struct WeatherSettings: Codable, Equatable {
         apiHost = try container.decodeIfPresent(String.self, forKey: .apiHost) ?? ""
         city = try container.decodeIfPresent(String.self, forKey: .city) ?? "Fuzhou"
         refreshInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .refreshInterval) ?? 1800
+        iconX = try container.decodeIfPresent(CGFloat.self, forKey: .iconX) ?? 560
+        iconY = try container.decodeIfPresent(CGFloat.self, forKey: .iconY) ?? 48
+        iconSize = try container.decodeIfPresent(CGFloat.self, forKey: .iconSize) ?? 128
         apiKey = ""
     }
 
@@ -509,6 +532,9 @@ struct WeatherSettings: Codable, Equatable {
         try container.encode(apiHost, forKey: .apiHost)
         try container.encode(city, forKey: .city)
         try container.encode(refreshInterval, forKey: .refreshInterval)
+        try container.encode(iconX, forKey: .iconX)
+        try container.encode(iconY, forKey: .iconY)
+        try container.encode(iconSize, forKey: .iconSize)
     }
 
     static let defaults = WeatherSettings(
@@ -543,52 +569,88 @@ struct WeatherSettings: Codable, Equatable {
     }
 }
 
-struct ProviderSettings: Codable, Equatable {
-    var name: String
-    var baseURL: String
-    var balancePath: String
-    var balanceJSONPath: String
+struct PlanUsageSettings: Codable, Equatable {
+    var planLabel: String
+    var limitID: String
+    var codexExecutable: String
     var refreshInterval: TimeInterval
-    var lastBalance: String
-    var lastBalanceValue: Double?
+    var lastRemainingPercent: Int?
+    var lastResetAt: Date?
+    var lastPlanType: String?
+    var lastEmail: String?
 
-    static let defaults = ProviderSettings(
-        name: "TeamoRouter",
-        baseURL: "https://teamorouter.com",
-        balancePath: "/v1/billing/balance",
-        balanceJSONPath: "balance.value",
-        refreshInterval: 1800,
-        lastBalance: "$19.58",
-        lastBalanceValue: 19.57842664
-    )
+    static var defaults: PlanUsageSettings {
+        let candidates = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex", "/usr/bin/codex"]
+        let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) ?? "codex"
+        return PlanUsageSettings(
+            planLabel: "",
+            limitID: "codex",
+            codexExecutable: executable,
+            refreshInterval: 1800,
+            lastRemainingPercent: nil,
+            lastResetAt: nil,
+            lastPlanType: nil,
+            lastEmail: nil
+        )
+    }
 
-    static func load() -> ProviderSettings {
-        guard let data = UserDefaults.standard.data(forKey: "providerSettings"),
-              var value = try? JSONDecoder().decode(ProviderSettings.self, from: data) else { return .defaults }
-        if value.refreshInterval == 600 {
-            value.refreshInterval = 1800
-            value.save()
-        }
-        if !value.lastBalance.isEmpty && !value.lastBalance.contains("$") {
-            if let numeric = Double(value.lastBalance.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                value.lastBalance = String(format: "$%.2f", numeric)
-            } else {
-                value.lastBalance = "$\(value.lastBalance)"
-            }
-            value.save()
-        }
-        // TeamoRouter exposes this endpoint on both hosts, but the confirmed
-        // Bearer-authenticated balance endpoint uses the root host.
-        if value.baseURL == "https://api.teamorouter.com" {
-            value.baseURL = "https://teamorouter.com"
-            value.save()
-        }
+    static func load() -> PlanUsageSettings {
+        guard let data = UserDefaults.standard.data(forKey: "planUsageSettings"),
+              var value = try? JSONDecoder().decode(PlanUsageSettings.self, from: data) else { return .defaults }
+        value.refreshInterval = min(max(value.refreshInterval, 60), 86_400)
         return value
     }
 
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults.standard.set(data, forKey: "providerSettings")
+        UserDefaults.standard.set(data, forKey: "planUsageSettings")
+    }
+}
+
+struct PlanUsageSnapshot: Equatable {
+    var authenticated: Bool
+    var planType: String?
+    var email: String?
+    var remainingPercent: Int?
+    var resetsAt: Date?
+    var windowDurationMinutes: Int?
+    var status: String
+
+    static func cached(from settings: PlanUsageSettings) -> PlanUsageSnapshot {
+        PlanUsageSnapshot(
+            authenticated: settings.lastPlanType != nil,
+            planType: settings.lastPlanType,
+            email: settings.lastEmail,
+            remainingPercent: settings.lastRemainingPercent,
+            resetsAt: settings.lastResetAt,
+            windowDurationMinutes: settings.lastRemainingPercent == nil ? nil : 10_080,
+            status: settings.lastRemainingPercent == nil ? "NOT CONNECTED" : "CACHED"
+        )
+    }
+
+    func planLabel(override: String) -> String {
+        let custom = override.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !custom.isEmpty { return custom.uppercased() }
+        guard let planType, !planType.isEmpty else { return "CHATGPT" }
+        return "GPT " + planType.replacingOccurrences(of: "_", with: " ").uppercased()
+    }
+
+    var allowanceText: String {
+        guard let remainingPercent else { return authenticated ? "UNAVAILABLE" : "SIGN IN" }
+        if windowDurationMinutes == 10_080 { return "\(remainingPercent)% WEEKLY" }
+        return "\(remainingPercent)% REMAINING"
+    }
+
+    func resetCountdown(now: Date = Date()) -> String {
+        guard let resetsAt else { return "UNAVAILABLE" }
+        let seconds = max(Int(resetsAt.timeIntervalSince(now)), 0)
+        if seconds == 0 { return "DUE NOW" }
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 { return "\(days)D \(hours)H" }
+        if hours > 0 { return "\(hours)H \(minutes)M" }
+        return "\(max(minutes, 1))M"
     }
 }
 
@@ -720,6 +782,7 @@ struct RuntimeStatus {
     var provider: String
     var balance: String
     var balanceValue: Double?
+    var resetCountdown: String = "UNAVAILABLE"
     var tokenPercent: Int
     var activeSession: String
     var elapsed: String
@@ -794,7 +857,8 @@ final class DashboardModel: NSObject {
     private(set) var assetFolderPath: String?
     private(set) var styles: DashboardStyles
     private(set) var layout: DashboardLayout
-    private(set) var providerSettings: ProviderSettings
+    private(set) var planUsageSettings: PlanUsageSettings
+    private(set) var planUsage: PlanUsageSnapshot
     private(set) var weatherSettings: WeatherSettings
     private(set) var assetStore: DashboardAssetStore
     var weatherCity: String { weatherSettings.city }
@@ -822,9 +886,9 @@ final class DashboardModel: NSObject {
     private let weatherService = SystemWeatherService()
     private let musicService = AppleMusicService()
     private let runtimeService = RuntimeStatusService()
-    private let balanceService = ProviderBalanceService()
+    private let planUsageService = CodexPlanUsageService()
     private var refreshTimer: Timer?
-    private var balanceTimer: Timer?
+    private var planUsageTimer: Timer?
     private var weatherTimer: Timer?
 
     override init() {
@@ -847,7 +911,8 @@ final class DashboardModel: NSObject {
         assetFolderPath = UserDefaults.standard.string(forKey: Keys.assetFolderPath)
         styles = DashboardStyles.load()
         layout = DashboardLayout.load()
-        providerSettings = ProviderSettings.load()
+        planUsageSettings = PlanUsageSettings.load()
+        planUsage = PlanUsageSnapshot.cached(from: planUsageSettings)
         weatherSettings = WeatherSettings.load()
         assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)) ?? Bundle.main.resourceURL)
         super.init()
@@ -855,8 +920,8 @@ final class DashboardModel: NSObject {
 
     func start() {
         refreshAll()
-        refreshBalance()
-        scheduleBalanceTimer()
+        refreshPlanUsage()
+        schedulePlanUsageTimer()
         scheduleWeatherTimer()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshDynamicData()
@@ -866,8 +931,8 @@ final class DashboardModel: NSObject {
     func stop() {
         refreshTimer?.invalidate()
         refreshTimer = nil
-        balanceTimer?.invalidate()
-        balanceTimer = nil
+        planUsageTimer?.invalidate()
+        planUsageTimer = nil
         weatherTimer?.invalidate()
         weatherTimer = nil
     }
@@ -913,18 +978,34 @@ final class DashboardModel: NSObject {
         notifyChange()
     }
 
-    func updateProviderSettings(_ settings: ProviderSettings) {
-        providerSettings = settings
-        providerSettings.refreshInterval = min(max(settings.refreshInterval, 30), 86_400)
-        providerSettings.save()
-        var updated = runtime
-        updated.provider = providerSettings.name.isEmpty ? updated.provider : providerSettings.name.uppercased()
-        updated.balance = providerSettings.lastBalance
-        updated.balanceValue = providerSettings.lastBalanceValue
-        runtime = updated
-        scheduleBalanceTimer()
-        refreshBalance()
+    func updatePlanUsageSettings(_ settings: PlanUsageSettings) {
+        var updated = settings
+        updated.planLabel = updated.planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.limitID = updated.limitID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if updated.limitID.isEmpty { updated.limitID = "codex" }
+        updated.codexExecutable = updated.codexExecutable.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.refreshInterval = min(max(updated.refreshInterval, 60), 86_400)
+        planUsageSettings = updated
+        updated.save()
+        schedulePlanUsageTimer()
+        refreshPlanUsage()
+        applyPlanUsageToRuntime()
         notifyChange()
+    }
+
+    func beginPlanOAuth(completion: @escaping (String) -> Void) {
+        planUsageService.startOAuth(executable: planUsageSettings.codexExecutable) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success:
+                    completion("Authorization complete")
+                    self.refreshPlanUsage()
+                case .failure(let error):
+                    completion(error.localizedDescription)
+                }
+            }
+        }
     }
 
     func updateWeatherSettings(_ settings: WeatherSettings) {
@@ -933,6 +1014,9 @@ final class DashboardModel: NSObject {
         updated.apiKey = updated.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.city = updated.city.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.refreshInterval = min(max(updated.refreshInterval, 60), 86_400)
+        updated.iconX = min(max(updated.iconX, -256), 1_280)
+        updated.iconY = min(max(updated.iconY, -256), 720)
+        updated.iconSize = min(max(updated.iconSize, 24), 384)
         weatherSettings = updated
         updated.save()
         scheduleWeatherTimer()
@@ -968,18 +1052,19 @@ final class DashboardModel: NSObject {
 
     fileprivate func refreshRuntime() {
         let source = runtimeSource
-        runtimeService.fetch(source: source, provider: providerSettings) { [weak self] status in
+        runtimeService.fetch(source: source) { [weak self] status in
             guard let self else { return }
             self.runtime = status.preservingTransientData(from: self.runtime)
+            self.applyPlanUsageToRuntime()
             self.notifyChange()
         }
     }
 
-    private func scheduleBalanceTimer() {
-        balanceTimer?.invalidate()
-        let interval = min(max(providerSettings.refreshInterval, 30), 86_400)
-        balanceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.refreshBalance()
+    private func schedulePlanUsageTimer() {
+        planUsageTimer?.invalidate()
+        let interval = min(max(planUsageSettings.refreshInterval, 60), 86_400)
+        planUsageTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refreshPlanUsage()
         }
     }
 
@@ -991,22 +1076,33 @@ final class DashboardModel: NSObject {
         }
     }
 
-    private func refreshBalance() {
-        let settings = providerSettings
-        balanceService.fetch(settings: settings) { [weak self] value in
-            guard let self, let value else { return }
-            var updatedSettings = self.providerSettings
-            updatedSettings.lastBalance = value.display
-            updatedSettings.lastBalanceValue = value.numeric
-            self.providerSettings = updatedSettings
-            updatedSettings.save()
-            var updatedRuntime = self.runtime
-            updatedRuntime.provider = updatedSettings.name.isEmpty ? updatedRuntime.provider : updatedSettings.name.uppercased()
-            updatedRuntime.balance = value.display
-            updatedRuntime.balanceValue = value.numeric
-            self.runtime = updatedRuntime
-            self.notifyChange()
+    func refreshPlanUsage() {
+        let settings = planUsageSettings
+        planUsageService.fetch(settings: settings) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let snapshot):
+                    self.planUsage = snapshot
+                    self.planUsageSettings.lastRemainingPercent = snapshot.remainingPercent
+                    self.planUsageSettings.lastResetAt = snapshot.resetsAt
+                    self.planUsageSettings.lastPlanType = snapshot.planType
+                    self.planUsageSettings.lastEmail = snapshot.email
+                    self.planUsageSettings.save()
+                case .failure(let error):
+                    self.planUsage.status = error.localizedDescription
+                }
+                self.applyPlanUsageToRuntime()
+                self.notifyChange()
+            }
         }
+    }
+
+    private func applyPlanUsageToRuntime() {
+        runtime.provider = planUsage.planLabel(override: planUsageSettings.planLabel)
+        runtime.balance = planUsage.allowanceText
+        runtime.balanceValue = planUsage.remainingPercent.map(Double.init)
+        runtime.resetCountdown = planUsage.resetCountdown()
     }
 
     private func notifyChange() {

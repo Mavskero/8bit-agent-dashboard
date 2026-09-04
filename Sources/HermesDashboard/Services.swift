@@ -2,6 +2,275 @@ import AppKit
 import Foundation
 import ImageIO
 
+enum PlanUsageServiceError: LocalizedError {
+    case executableNotFound(String)
+    case launchFailed(String)
+    case protocolError(String)
+    case notAuthenticated
+    case weeklyWindowUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .executableNotFound(let path): return "Codex executable not found: \(path)"
+        case .launchFailed(let message): return "Could not start Codex: \(message)"
+        case .protocolError(let message): return message
+        case .notAuthenticated: return "Authorize with ChatGPT to read plan usage"
+        case .weeklyWindowUnavailable: return "Weekly allowance is unavailable for this account"
+        }
+    }
+}
+
+private final class CodexAppServerClient {
+    typealias JSON = [String: Any]
+    private let queue = DispatchQueue(label: "com.hermes.dashboard.codex-app-server")
+    private var process: Process?
+    private var input: FileHandle?
+    private var output: FileHandle?
+    private var buffer = Data()
+    private var nextID = 1
+    private var callbacks: [Int: (Result<JSON, Error>) -> Void] = [:]
+    private var didStop = false
+    var onNotification: ((String, JSON) -> Void)?
+
+    func start(executable: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        queue.async {
+            let resolved = Self.resolveExecutable(executable)
+            guard FileManager.default.isExecutableFile(atPath: resolved) else {
+                DispatchQueue.main.async { completion(.failure(PlanUsageServiceError.executableNotFound(executable))) }
+                return
+            }
+            let process = Process()
+            let stdin = Pipe()
+            let stdout = Pipe()
+            process.executableURL = URL(fileURLWithPath: resolved)
+            process.arguments = ["app-server", "--stdio"]
+            process.standardInput = stdin
+            process.standardOutput = stdout
+            process.standardError = FileHandle.nullDevice
+            self.process = process
+            self.input = stdin.fileHandleForWriting
+            self.output = stdout.fileHandleForReading
+            stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                self?.queue.async { self?.consume(data) }
+            }
+            process.terminationHandler = { [weak self] process in
+                self?.queue.async {
+                    guard let self, !self.didStop else { return }
+                    self.failPending(PlanUsageServiceError.protocolError("Codex app-server exited (\(process.terminationStatus))"))
+                }
+            }
+            do {
+                try process.run()
+            } catch {
+                self.stopLocked()
+                DispatchQueue.main.async { completion(.failure(PlanUsageServiceError.launchFailed(error.localizedDescription))) }
+                return
+            }
+            self.requestLocked(method: "initialize", params: [
+                "clientInfo": ["name": "hermes_dashboard", "title": "Hermes Dashboard", "version": "1.0"]
+            ]) { result in
+                switch result {
+                case .success:
+                    self.sendLocked(["method": "initialized", "params": [:]])
+                    DispatchQueue.main.async { completion(.success(())) }
+                case .failure(let error):
+                    DispatchQueue.main.async { completion(.failure(error)) }
+                }
+            }
+        }
+    }
+
+    func request(method: String, params: JSON? = nil, completion: @escaping (Result<JSON, Error>) -> Void) {
+        queue.async { self.requestLocked(method: method, params: params, completion: completion) }
+    }
+
+    func stop() { queue.async { self.stopLocked() } }
+
+    private func requestLocked(method: String, params: JSON?, completion: @escaping (Result<JSON, Error>) -> Void) {
+        guard !didStop else {
+            DispatchQueue.main.async { completion(.failure(PlanUsageServiceError.protocolError("Codex connection is closed"))) }
+            return
+        }
+        let id = nextID
+        nextID += 1
+        callbacks[id] = completion
+        var message: JSON = ["method": method, "id": id]
+        if let params { message["params"] = params }
+        sendLocked(message)
+        queue.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self, let callback = self.callbacks.removeValue(forKey: id) else { return }
+            DispatchQueue.main.async { callback(.failure(PlanUsageServiceError.protocolError("Codex request timed out: \(method)"))) }
+        }
+    }
+
+    private func sendLocked(_ message: JSON) {
+        guard let data = try? JSONSerialization.data(withJSONObject: message), var line = String(data: data, encoding: .utf8) else { return }
+        line.append("\n")
+        input?.write(line.data(using: .utf8) ?? Data())
+    }
+
+    private func consume(_ data: Data) {
+        buffer.append(data)
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let line = buffer.prefix(upTo: newline)
+            buffer.removeSubrange(...newline)
+            guard !line.isEmpty,
+                  let object = try? JSONSerialization.jsonObject(with: Data(line)) as? JSON else { continue }
+            handle(object)
+        }
+    }
+
+    private func handle(_ message: JSON) {
+        if let id = (message["id"] as? NSNumber)?.intValue,
+           let callback = callbacks.removeValue(forKey: id) {
+            if let result = message["result"] as? JSON {
+                DispatchQueue.main.async { callback(.success(result)) }
+            } else {
+                let errorObject = message["error"] as? JSON
+                let text = errorObject?["message"] as? String ?? "Invalid response from Codex app-server"
+                DispatchQueue.main.async { callback(.failure(PlanUsageServiceError.protocolError(text))) }
+            }
+            return
+        }
+        if let method = message["method"] as? String {
+            let params = message["params"] as? JSON ?? [:]
+            DispatchQueue.main.async { [weak self] in self?.onNotification?(method, params) }
+        }
+    }
+
+    private func failPending(_ error: Error) {
+        let pending = callbacks.values
+        callbacks.removeAll()
+        for callback in pending { DispatchQueue.main.async { callback(.failure(error)) } }
+    }
+
+    private func stopLocked() {
+        guard !didStop else { return }
+        didStop = true
+        output?.readabilityHandler = nil
+        try? input?.close()
+        try? output?.close()
+        if process?.isRunning == true { process?.terminate() }
+        process = nil
+        input = nil
+        output = nil
+        callbacks.removeAll()
+    }
+
+    private static func resolveExecutable(_ configured: String) -> String {
+        let value = (configured.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).expandingTildeInPath
+        if value.hasPrefix("/") { return value }
+        let name = value.isEmpty ? "codex" : value
+        let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+            + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+        return paths.map { URL(fileURLWithPath: $0).appendingPathComponent(name).path }
+            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) ?? value
+    }
+}
+
+final class CodexPlanUsageService {
+    private var refreshClient: CodexAppServerClient?
+    private var oauthClient: CodexAppServerClient?
+
+    func fetch(settings: PlanUsageSettings, completion: @escaping (Result<PlanUsageSnapshot, Error>) -> Void) {
+        refreshClient?.stop()
+        let client = CodexAppServerClient()
+        refreshClient = client
+        client.start(executable: settings.codexExecutable) { [weak self, weak client] startResult in
+            guard let self, let client else { return }
+            if case .failure(let error) = startResult {
+                self.refreshClient = nil
+                completion(.failure(error))
+                return
+            }
+            client.request(method: "account/read", params: ["refreshToken": false]) { accountResult in
+                switch accountResult {
+                case .failure(let error):
+                    client.stop(); self.refreshClient = nil; completion(.failure(error))
+                case .success(let response):
+                    guard let account = response["account"] as? [String: Any], account["type"] as? String == "chatgpt" else {
+                        client.stop(); self.refreshClient = nil; completion(.failure(PlanUsageServiceError.notAuthenticated))
+                        return
+                    }
+                    let planType = account["planType"] as? String
+                    let email = account["email"] as? String
+                    client.request(method: "account/rateLimits/read") { limitsResult in
+                        client.stop(); self.refreshClient = nil
+                        switch limitsResult {
+                        case .failure(let error): completion(.failure(error))
+                        case .success(let limits):
+                            completion(Self.snapshot(from: limits, limitID: settings.limitID, planType: planType, email: email))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func startOAuth(executable: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        oauthClient?.stop()
+        let client = CodexAppServerClient()
+        oauthClient = client
+        var completed = false
+        func finish(_ result: Result<Void, Error>) {
+            guard !completed else { return }
+            completed = true
+            client.stop()
+            oauthClient = nil
+            completion(result)
+        }
+        client.onNotification = { method, params in
+            guard method == "account/login/completed" else { return }
+            if params["success"] as? Bool == true {
+                finish(.success(()))
+            } else {
+                finish(.failure(PlanUsageServiceError.protocolError(params["error"] as? String ?? "Authorization failed")))
+            }
+        }
+        client.start(executable: executable) { result in
+            if case .failure(let error) = result { finish(.failure(error)); return }
+            client.request(method: "account/login/start", params: [
+                "type": "chatgpt", "useHostedLoginSuccessPage": true, "appBrand": "chatgpt"
+            ]) { response in
+                switch response {
+                case .failure(let error): finish(.failure(error))
+                case .success(let payload):
+                    guard let text = payload["authUrl"] as? String, let url = URL(string: text) else {
+                        finish(.failure(PlanUsageServiceError.protocolError("Codex did not return an authorization URL")))
+                        return
+                    }
+                    if !NSWorkspace.shared.open(url) {
+                        finish(.failure(PlanUsageServiceError.protocolError("Could not open the authorization page")))
+                    }
+                }
+            }
+        }
+    }
+
+    private static func snapshot(from response: [String: Any], limitID: String, planType: String?, email: String?) -> Result<PlanUsageSnapshot, Error> {
+        let buckets = response["rateLimitsByLimitId"] as? [String: Any]
+        let selected = (buckets?[limitID] as? [String: Any]) ?? (response["rateLimits"] as? [String: Any])
+        guard let bucket = selected else { return .failure(PlanUsageServiceError.weeklyWindowUnavailable) }
+        let windows = [bucket["primary"], bucket["secondary"]].compactMap { $0 as? [String: Any] }
+        guard let weekly = windows.first(where: { ($0["windowDurationMins"] as? NSNumber)?.intValue == 10_080 }) else {
+            return .failure(PlanUsageServiceError.weeklyWindowUnavailable)
+        }
+        let used = min(max((weekly["usedPercent"] as? NSNumber)?.intValue ?? 0, 0), 100)
+        let resetSeconds = (weekly["resetsAt"] as? NSNumber)?.doubleValue
+        return .success(PlanUsageSnapshot(
+            authenticated: true,
+            planType: planType ?? bucket["planType"] as? String,
+            email: email,
+            remainingPercent: 100 - used,
+            resetsAt: resetSeconds.map(Date.init(timeIntervalSince1970:)),
+            windowDurationMinutes: 10_080,
+            status: "LIVE"
+        ))
+    }
+}
+
 private final class ProcessRunner {
     static func run(executable: String, arguments: [String], timeout: TimeInterval = 4) -> String? {
         let process = Process()
@@ -477,21 +746,21 @@ private struct CodexSnapshot {
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
 
-    func fetch(source: RuntimeSource, provider: ProviderSettings, completion: @escaping (RuntimeStatus) -> Void) {
+    func fetch(source: RuntimeSource, completion: @escaping (RuntimeStatus) -> Void) {
         queue.async {
-            let status = self.read(source: source, provider: provider) ?? RuntimeStatus.demo(source: source)
+            let status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
             DispatchQueue.main.async { completion(status) }
         }
     }
 
-    private func read(source: RuntimeSource, provider: ProviderSettings) -> RuntimeStatus? {
+    private func read(source: RuntimeSource) -> RuntimeStatus? {
         if source == .hermes, let hermesSnapshot = readHermesSnapshot() {
-            return mapHermes(hermesSnapshot, provider: provider)
+            return mapHermes(hermesSnapshot)
         }
         let codexSnapshot = source == .codex ? readCodexSnapshot() : nil
         for url in candidateURLs(for: source) {
             guard let data = try? Data(contentsOf: url), let payload = try? JSONDecoder().decode(RuntimePayload.self, from: data) else { continue }
-            return map(payload, source: source, provider: provider, codexSnapshot: codexSnapshot)
+            return map(payload, source: source, codexSnapshot: codexSnapshot)
         }
         if source == .codex, let codexSnapshot {
             var status = RuntimeStatus.demo(source: source)
@@ -504,9 +773,6 @@ final class RuntimeStatusService {
             if let thinking = codexSnapshot.thinking { status.thinking = thinking.uppercased() }
             if let fastMode = codexSnapshot.fastMode { status.fastMode = fastMode }
             if let sourceProvider = codexSnapshot.provider { status.provider = sourceProvider.uppercased() }
-            if !provider.name.isEmpty { status.provider = provider.name.uppercased() }
-            status.balance = provider.lastBalance
-            status.balanceValue = provider.lastBalanceValue
             status.hasModelData = codexSnapshot.model?.isEmpty == false
             status.hasContextData = codexSnapshot.hasContextData
             status.isLive = true
@@ -546,15 +812,15 @@ private struct HermesSnapshot {
     var hasContextData: Bool
 }
 
-    private func mapHermes(_ snapshot: HermesSnapshot, provider: ProviderSettings) -> RuntimeStatus {
+    private func mapHermes(_ snapshot: HermesSnapshot) -> RuntimeStatus {
         RuntimeStatus(
             source: .hermes,
             model: snapshot.model,
             thinking: snapshot.thinking.uppercased(),
             fastMode: snapshot.fastMode,
-            provider: (provider.name.isEmpty ? snapshot.provider : provider.name).uppercased(),
-            balance: provider.lastBalance.isEmpty ? RuntimeStatus.demo(source: .hermes).balance : provider.lastBalance,
-            balanceValue: provider.lastBalanceValue,
+            provider: snapshot.provider.uppercased(),
+            balance: RuntimeStatus.demo(source: .hermes).balance,
+            balanceValue: RuntimeStatus.demo(source: .hermes).balanceValue,
             tokenPercent: snapshot.contextPercent,
             activeSession: snapshot.sessions.first?.title ?? "",
             elapsed: "",
@@ -1038,7 +1304,7 @@ private struct HermesSnapshot {
         }
     }
 
-    private func map(_ payload: RuntimePayload, source: RuntimeSource, provider: ProviderSettings, codexSnapshot: CodexSnapshot?) -> RuntimeStatus {
+    private func map(_ payload: RuntimePayload, source: RuntimeSource, codexSnapshot: CodexSnapshot?) -> RuntimeStatus {
         let demo = RuntimeStatus.demo(source: source)
         let calculatedContext: Int
         if let snapshot = codexSnapshot {
@@ -1067,9 +1333,9 @@ private struct HermesSnapshot {
             model: codexSnapshot?.model ?? payload.model ?? demo.model,
             thinking: (codexSnapshot?.thinking ?? payload.thinking ?? payload.reasoningEffort ?? demo.thinking).uppercased(),
             fastMode: codexSnapshot?.fastMode ?? payload.fastMode ?? payload.fast ?? demo.fastMode,
-            provider: (provider.name.isEmpty ? (codexSnapshot?.provider ?? payload.provider ?? demo.provider) : provider.name).uppercased(),
-            balance: provider.lastBalance.isEmpty ? (payload.balance ?? demo.balance) : provider.lastBalance,
-            balanceValue: provider.lastBalanceValue ?? payload.balanceValue,
+            provider: (codexSnapshot?.provider ?? payload.provider ?? demo.provider).uppercased(),
+            balance: payload.balance ?? demo.balance,
+            balanceValue: payload.balanceValue ?? demo.balanceValue,
             tokenPercent: codexSnapshot?.contextPercent ?? clamp(Int(((payload.tokenPercent ?? payload.tokens ?? Double(demo.tokenPercent))).rounded()), min: 0, max: 100),
             activeSession: currentSession,
             elapsed: payload.elapsed ?? demo.elapsed,
@@ -1085,98 +1351,6 @@ private struct HermesSnapshot {
 
     private func clamp(_ value: Int, min: Int, max: Int) -> Int {
         Swift.min(Swift.max(value, min), max)
-    }
-}
-
-struct BalanceSnapshot {
-    var display: String
-    var numeric: Double?
-}
-
-final class ProviderBalanceService {
-    private let queue = DispatchQueue(label: "hermes-dashboard.balance", qos: .utility)
-
-    func fetch(settings: ProviderSettings, completion: @escaping (BalanceSnapshot?) -> Void) {
-        guard !settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !settings.balancePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !apiKey.isEmpty else {
-            completion(nil)
-            return
-        }
-        queue.async {
-            let result = self.read(settings: settings, apiKey: apiKey)
-            DispatchQueue.main.async { completion(result) }
-        }
-    }
-
-    private func read(settings: ProviderSettings, apiKey: String) -> BalanceSnapshot? {
-        let base = settings.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let path = settings.balancePath.hasPrefix("/") ? settings.balancePath : "/\(settings.balancePath)"
-        guard let url = URL(string: base + path) else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 8
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: BalanceSnapshot?
-        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
-            defer { semaphore.signal() }
-            guard let data, (response as? HTTPURLResponse)?.statusCode ?? 0 >= 200,
-                  (response as? HTTPURLResponse)?.statusCode ?? 0 < 300,
-                  let object = try? JSONSerialization.jsonObject(with: data) else { return }
-            let value = self.value(at: settings.balanceJSONPath, in: object) ?? object
-            result = self.snapshot(for: value)
-        }
-        task.resume()
-        _ = semaphore.wait(timeout: .now() + 10)
-        return result
-    }
-
-    private func value(at path: String, in object: Any) -> Any? {
-        var current: Any = object
-        for component in path.split(separator: ".").map(String.init) where !component.isEmpty {
-            if let dictionary = current as? [String: Any] {
-                guard let next = dictionary[component] else { return nil }
-                current = next
-            } else if let array = current as? [Any], let index = Int(component), array.indices.contains(index) {
-                current = array[index]
-            } else { return nil }
-        }
-        return current
-    }
-
-    private func snapshot(for value: Any) -> BalanceSnapshot? {
-        if let number = value as? NSNumber {
-            return BalanceSnapshot(display: format(number.doubleValue), numeric: number.doubleValue)
-        }
-        if let string = value as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let numeric = numericValue(in: trimmed)
-            guard !trimmed.isEmpty else { return nil }
-            let display: String
-            if trimmed.contains("$") {
-                display = trimmed
-            } else if let numeric {
-                display = format(numeric)
-            } else {
-                display = "$\(trimmed)"
-            }
-            return BalanceSnapshot(display: display, numeric: numeric)
-        }
-        return nil
-    }
-
-    private func numericValue(in string: String) -> Double? {
-        let pattern = #"[-+]?\d+(?:\.\d+)?"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: string, range: NSRange(string.startIndex..<string.endIndex, in: string)),
-              let range = Range(match.range, in: string) else { return nil }
-        return Double(string[range])
-    }
-
-    private func format(_ value: Double) -> String {
-        String(format: "$%.2f", value)
     }
 }
 

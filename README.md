@@ -37,7 +37,7 @@ open build/HermesDashboard.app
 
 ## 可替换天气与 Agent 图标
 
-应用默认使用 `Resources/WeatherAssets/Static` 中的 1254×1254 透明 PNG 天气图标，并按晴天、夜晚、多云、阴天、雾、毛毛雨、雨、雪和雷暴状态自动切换。构建脚本会把整套资源复制到 App Bundle。
+应用默认使用 `Resources/WeatherAssets/Static` 中的 1254×1254 透明 PNG 天气图标，并按晴天、夜晚、多云、阴天、雾、毛毛雨、雨、雪和雷暴状态自动切换。构建脚本会把整套资源复制到 App Bundle。`Weather Settings…` 中可以独立设置天气图标的画布 X/Y 坐标和显示尺寸。
 
 在设置中选择 `WEATHER / AGENT ASSET FOLDER`，程序会读取用户指定目录下的 PNG、JPG 或 GIF：
 
@@ -52,14 +52,14 @@ hermes-done.png         hermes-error.png
 
 ## Runtime Status 数据
 
-Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、provider、余额和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；外部状态 JSON 也支持 `model`、`thinking` / `reasoningEffort`、`fast` / `fastMode`、`provider`、`balance` 字段。thinking 与余额会按强度/金额使用不同颜色。
+Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、ChatGPT 套餐、套餐周剩余额度、下次重置倒计时和上下文占用。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`。thinking 与套餐剩余比例会分别按强度和余量使用不同颜色。
 Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保留上一轮真实模型名。
 
-主设置中的 `Provider Settings…` 支持 provider 名称、余额请求 base URL、余额路径、JSON 字段路径和刷新秒数。TeamoRouter 默认请求为 `https://teamorouter.com/v1/billing/balance`，使用环境变量 `OPENAI_API_KEY` 作为 Bearer token；余额以美元显示（例如 `$20.90`），启动时立即获取一次，之后按间隔刷新，请求失败时保留上次成功读数。Finder 启动的 App 必须确保该变量已通过 launchd 导出，设置窗口会显示当前进程是否检测到它。Runtime Icons 设置支持六种内置像素图案、PNG/GIF 文件路径和每个图标独立 X/Y 坐标；`TITLE / CONTENT GAP` 控制 Runtime Status 标题与第一行内容的间距，`ICON / TITLE GAP` 控制行内图标与标题的间距。
+主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示剩余额度，并使用服务端 `resetsAt` 计算实时倒计时。可配置显示名称、bucket ID、Codex 可执行文件和刷新间隔；`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。读取失败时保留上次成功的周余额与重置时间。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置仍支持切回六种内置图案或选择自定义 PNG/GIF，并可独立设置 X/Y。`TITLE / CONTENT GAP` 控制标题与第一行的间距，`ICON / TITLE GAP` 控制图标与行标题的间距。
 
-`Weather Settings…` 可以选择天气源和天气图标包。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
+`Weather Settings…` 可以选择天气源和天气图标包，并设置图标的 X/Y 位置与 24–384 px 显示尺寸。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；成功时界面会显示 `QWEATHER` 来源标识。
 
-设置数据位于项目目录之外：普通偏好保存在 `~/Library/Preferences/com.hermes.dashboard.plist`，QWeather API KEY 保存在 macOS 钥匙串，导入字体保存在 `~/Library/Application Support/Hermes Dashboard/Fonts`。删除项目源码或覆盖安装同一 Bundle ID 的 App 不会清除这些数据。
+设置数据位于项目目录之外：普通偏好（包括天气图标位置、套餐显示名称和上次成功的周用量）保存在 `~/Library/Preferences/com.hermes.dashboard.plist`，QWeather API KEY 保存在 macOS 钥匙串，ChatGPT OAuth 凭据由 Codex 管理，导入字体保存在 `~/Library/Application Support/Hermes Dashboard/Fonts`。删除项目源码或覆盖安装同一 Bundle ID 的 App 不会清除这些数据。
 
 天气源也可以切换为 Open-Meteo 或 macOS Weather。城市支持名称、LocationID 或经纬度；天气请求失败时继续使用 macOS Weather 缓存/辅助功能数据和内置降级值。仪表盘温度旁显示当前天气条件英文：`CLEAR`、`PARTLY CLOUDY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
 

@@ -50,10 +50,10 @@ killall HermesDashboard 2>/dev/null || true
 - 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
 - 设置窗口使用浅色高对比外观；每个颜色支持取色板和 R/G/B 数值编辑，双击色块会在 `DEFAULT DISPLAY` 指定的屏幕打开取色板。每个文字样式都有独立的 `Smooth + 8x` 开关；开启后使用 8x 字体位图、抗锯齿、字体平滑和高质量插值，默认值沿用当前已固化设置。
 - Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
-- Provider Settings 支持 provider 名称、余额 base URL / path / JSON 字段路径、刷新间隔和上次余额持久化；余额请求读取 `OPENAI_API_KEY`，启动立即请求，余额以美元显示，失败保持旧值。
-- Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、provider 和余额；余额按 >=10、5-10、<5 显示绿/黄/红，thinking 按强度显示不同颜色。
-- Runtime Icons 设置支持六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y；可单独设置 Runtime 标题与内容间距以及 icon 与行标题的间距。
-- `Weather Settings…` 默认选择和风天气 QWeather，可配置专属 API Host、API KEY、城市/LocationID/经纬度和刷新间隔。API KEY 存入 macOS 钥匙串；也可切换 Open-Meteo 或 macOS Weather，失败时使用系统缓存/降级值。
+- Plan Usage / OAuth 设置通过官方 Codex app-server 读取 ChatGPT `codex` 周用量窗口；显示套餐、周剩余百分比和下次重置倒计时，支持显示名称、bucket ID、Codex 路径和刷新间隔。OAuth token 由 Codex 管理，读取失败保留缓存值。
+- Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、套餐、周剩余额度、下次重置倒计时和上下文占用；额度按 >=50、20-49、<20 显示绿/黄/红。
+- Runtime Status 七行默认图标来自 `Resources/RuntimeStatusIcons`：Model、Thinking、Fast mode、Plan、Plan balance、Next reset、Tokens。已确认的 `05-legacy-balance.png` 作为备用资源保留。Runtime Icons 设置可切回六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y。
+- `Weather Settings…` 默认选择和风天气 QWeather，可配置专属 API Host、API KEY、城市/LocationID/经纬度、刷新间隔，以及天气图标 X/Y 和 24–384 px 尺寸。API KEY 存入 macOS 钥匙串；也可切换 Open-Meteo 或 macOS Weather，失败时使用系统缓存/降级值。
 
 ## 当前项目默认设置
 
@@ -69,7 +69,7 @@ runtimeTitleSpacing = 48
 runtimeIconTitleSpacing = 28
 ```
 
-文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Weather Condition`、`Session Context Percent` 和 `Active Session · Last Conversation` 都有独立的字体与坐标设置。默认 Provider 为 TeamoRouter，余额接口为 `https://teamorouter.com` + `/v1/billing/balance`，JSON 字段为 `balance.value`。请求只发送 `Authorization: Bearer <OPENAI_API_KEY>`。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Weather Condition`、`Session Context Percent` 和 `Active Session · Last Conversation` 都有独立的字体与坐标设置。套餐用量默认读取 Codex app-server 的 `codex` bucket 10080 分钟窗口，刷新间隔 30 分钟；用户可覆盖套餐显示名。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`，位置为 X=560、Y=48、尺寸 128。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 
@@ -102,7 +102,7 @@ activeSession = (618, 416)
 
 Active Session 外框使用普通 `borderBright`，最新 session 内框使用高亮 `cyan` 边框和至少 0.16 的 cyan 填充。底部模块默认 y=416 是为避免 288px 高度超出外部 720px 画布而设置的；如果继续调整高度，必须同步检查 `y + height <= 712`。
 
-Runtime Status 行首从模块原点的标题下方开始，每行间距 35px；标题与内容默认间距为 48，icon 与行标题默认间距为 28。行尾彩灯和右上角 CODEX/HERMES 来源字样已删除。齿轮按钮使用 54x54 的点击区域。
+Runtime Status 行首从模块原点的标题下方开始，每行间距 32px；标题与内容默认间距为 48，icon 与行标题默认间距为 28。行尾彩灯和右上角 CODEX/HERMES 来源字样已删除。齿轮按钮使用 54x54 的点击区域。
 
 ## 代码结构
 
@@ -136,8 +136,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `runtimeSource`：Codex 或 Hermes。
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。
 - `wallpaperCleared`：用户明确清除 Bundle 默认壁纸后的标记。
-- `providerSettings`：provider 名称、余额请求设置、刷新间隔和最后成功余额。
-- `weatherSettings`：天气源、天气图标包、QWeather API Host、城市和刷新间隔；QWeather API KEY 单独保存在 macOS 钥匙串；`DashboardLayout.runtimeTitleSpacing` / `runtimeIconTitleSpacing` / `runtimeIcons`：Runtime 间距和图标设置。
+- `weatherSettings`：天气源、天气图标包、QWeather API Host、城市、刷新间隔和图标 X/Y/尺寸；QWeather API KEY 单独保存在 macOS 钥匙串；`planUsageSettings`：套餐显示名、bucket、Codex 路径、刷新间隔和上次成功的周窗口；OAuth 凭据由 Codex 管理；`DashboardLayout.runtimeTitleSpacing` / `runtimeIconTitleSpacing` / `runtimeIcons`：Runtime 间距和图标设置。
 
 `DashboardLayout` 对旧配置做了迁移：旧的 492、444、327、417、420 底部 y 值会迁移到 416；自定义的其他坐标保持不变。
 
@@ -156,5 +155,5 @@ Codex 来源由 `RuntimeStatusService` 读取：
 - `state_5.sqlite`、`thread_history_1.sqlite` 和 `codex-dev.db` 是本机运行时数据，不属于项目文件，不能复制进仓库。
 - Weather.app 和 Apple Music 的读取可能需要 macOS 隐私权限；权限不足时程序应继续使用降级数据，不要把权限错误当作启动失败。
 - 全屏 screen-saver 层级窗口会影响文件选择器，所以设置中的文件面板通过临时降低父窗口层级来打开；修改窗口层级时需要复测 Choose GIF / Choose Folder。
-- Finder 启动不会继承终端 shell 的 `OPENAI_API_KEY`。Provider 设置会显示当前 App 进程是否检测到变量；若显示 missing，需要先通过 launchd 提供该变量并完全退出后重开 App，密钥不能写入源码、偏好或日志。
+- 套餐用量依赖本机可执行的 `codex` 和 ChatGPT 登录。设置中的 OAuth 浏览器流程与 Codex 共用账号和凭据；Dashboard 本身不读取 token。
 - Codex 闲置时若状态源暂时返回空模型或 `custom`，Runtime Status 会保留上一轮真实模型名。

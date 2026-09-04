@@ -14,7 +14,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var styleRows: [DashboardStyleKey: StyleRow] = [:]
     private var availableScreens: [NSScreen] = []
     private var layoutController: LayoutSettingsWindowController?
-    private var providerController: ProviderSettingsWindowController?
+    private var planUsageController: PlanUsageSettingsWindowController?
     private var weatherController: WeatherSettingsWindowController?
 
     init(model: DashboardModel, parentWindow: NSWindow?, onDisplayChanged: @escaping (NSScreen) -> Void) {
@@ -77,7 +77,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         sourcePopup.target = self
         sourcePopup.action = #selector(sourceChanged(_:))
         content.addSubview(sourcePopup)
-        addButton("Provider Settings…", x: 590, y: 622, width: 140, action: #selector(showProviderSettings(_:)), to: content)
+        addButton("Plan Usage / OAuth…", x: 570, y: 622, width: 160, action: #selector(showPlanUsageSettings(_:)), to: content)
 
         let displayLabel = makeLabel("DEFAULT DISPLAY")
         displayLabel.frame = NSRect(x: 28, y: 584, width: 240, height: 20)
@@ -184,9 +184,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         layoutController?.showWindow(nil)
     }
 
-    @objc private func showProviderSettings(_ sender: NSButton) {
-        if providerController == nil { providerController = ProviderSettingsWindowController(model: model, parentWindow: window) }
-        providerController?.showWindow(nil)
+    @objc private func showPlanUsageSettings(_ sender: NSButton) {
+        if planUsageController == nil { planUsageController = PlanUsageSettingsWindowController(model: model, parentWindow: window) }
+        planUsageController?.showWindow(nil)
     }
 
     @objc private func showWeatherSettings(_ sender: NSButton) {
@@ -553,11 +553,14 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
     private let apiKeyField = NSSecureTextField(string: "")
     private let cityField = NSTextField(string: "")
     private let refreshField = NSTextField(string: "")
+    private let iconXField = NSTextField(string: "")
+    private let iconYField = NSTextField(string: "")
+    private let iconSizeField = NSTextField(string: "")
 
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 480), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 570), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Weather Source Settings"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
@@ -597,29 +600,39 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
 
         let title = makeLabel("WEATHER SOURCE", size: 18, bold: true)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 434, width: 560, height: 26)
+        title.frame = NSRect(x: 28, y: 524, width: 560, height: 26)
         content.addSubview(title)
 
-        addLabel("Source", y: 390, to: content)
+        addLabel("Source", y: 480, to: content)
         sourcePopup.addItems(withTitles: WeatherSource.allCases.map(\.displayName))
-        sourcePopup.frame = NSRect(x: 220, y: 386, width: 380, height: 28)
+        sourcePopup.frame = NSRect(x: 220, y: 476, width: 380, height: 28)
         sourcePopup.target = self
         sourcePopup.action = #selector(sourceChanged(_:))
         content.addSubview(sourcePopup)
 
-        addLabel("Weather icon set", y: 346, to: content)
+        addLabel("Weather icon set", y: 436, to: content)
         iconSetPopup.addItems(withTitles: WeatherIconSet.allCases.map(\.displayName))
-        iconSetPopup.frame = NSRect(x: 220, y: 342, width: 380, height: 28)
+        iconSetPopup.frame = NSRect(x: 220, y: 432, width: 380, height: 28)
         content.addSubview(iconSetPopup)
 
-        addLabel("QWeather API Host", y: 302, to: content)
-        configure(field: apiHostField, y: 298, placeholder: "abcxyz.qweatherapi.com", in: content)
-        addLabel("QWeather API KEY", y: 258, to: content)
-        configure(field: apiKeyField, y: 254, placeholder: "Stored in macOS Keychain", in: content)
-        addLabel("City / Location", y: 214, to: content)
-        configure(field: cityField, y: 210, placeholder: "Fuzhou / 101230101 / 119.30,26.08", in: content)
-        addLabel("Refresh interval (min)", y: 170, to: content)
-        configure(field: refreshField, y: 166, placeholder: "30", in: content)
+        addLabel("QWeather API Host", y: 392, to: content)
+        configure(field: apiHostField, y: 388, placeholder: "abcxyz.qweatherapi.com", in: content)
+        addLabel("QWeather API KEY", y: 348, to: content)
+        configure(field: apiKeyField, y: 344, placeholder: "Stored in macOS Keychain", in: content)
+        addLabel("City / Location", y: 304, to: content)
+        configure(field: cityField, y: 300, placeholder: "Fuzhou / 101230101 / 119.30,26.08", in: content)
+        addLabel("Refresh interval (min)", y: 260, to: content)
+        configure(field: refreshField, y: 256, placeholder: "30", in: content)
+
+        addLabel("Icon position X / Y", y: 216, to: content)
+        iconXField.frame = NSRect(x: 220, y: 212, width: 180, height: 26)
+        iconYField.frame = NSRect(x: 420, y: 212, width: 180, height: 26)
+        for field in [iconXField, iconYField] {
+            field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            content.addSubview(field)
+        }
+        addLabel("Icon size (px)", y: 172, to: content)
+        configure(field: iconSizeField, y: 168, placeholder: "128", in: content)
 
         let note = NSTextField(wrappingLabelWithString: "QWeather is the default source. Copy your dedicated API Host from QWeather Console → Settings and create an API KEY credential under Project Management. The key is kept in macOS Keychain; the dashboard refreshes immediately after Apply.")
         note.font = NSFont.systemFont(ofSize: 11)
@@ -662,6 +675,9 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
         apiKeyField.stringValue = settings.apiKey
         cityField.stringValue = settings.city
         refreshField.stringValue = String(Int(settings.refreshInterval / 60))
+        iconXField.stringValue = String(Int(settings.iconX))
+        iconYField.stringValue = String(Int(settings.iconY))
+        iconSizeField.stringValue = String(Int(settings.iconSize))
         updateFieldAvailability()
     }
 
@@ -684,21 +700,25 @@ private final class WeatherSettingsWindowController: NSWindowController, NSWindo
         settings.city = cityField.stringValue
         let minutes = Double(refreshField.stringValue) ?? settings.refreshInterval / 60
         settings.refreshInterval = minutes * 60
+        settings.iconX = CGFloat(Double(iconXField.stringValue) ?? Double(settings.iconX))
+        settings.iconY = CGFloat(Double(iconYField.stringValue) ?? Double(settings.iconY))
+        settings.iconSize = CGFloat(Double(iconSizeField.stringValue) ?? Double(settings.iconSize))
         model.updateWeatherSettings(settings)
         window?.close()
     }
 }
 
-private final class ProviderSettingsWindowController: NSWindowController, NSWindowDelegate {
+private final class PlanUsageSettingsWindowController: NSWindowController, NSWindowDelegate {
     private let model: DashboardModel
     private weak var parentWindow: NSWindow?
     private var fields: [String: NSTextField] = [:]
+    private let statusLabel = NSTextField(wrappingLabelWithString: "")
 
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 360), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
-        panel.title = "Provider Settings"
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 400), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.title = "Plan Usage & OAuth"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
         panel.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1)
@@ -711,6 +731,7 @@ private final class ProviderSettingsWindowController: NSWindowController, NSWind
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func showWindow(_ sender: Any?) {
+        reloadFields()
         super.showWindow(sender)
         window?.center()
         NSApp.activate(ignoringOtherApps: true)
@@ -728,27 +749,34 @@ private final class ProviderSettingsWindowController: NSWindowController, NSWind
         guard let content = window?.contentView else { return }
         content.wantsLayer = true
         content.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 1).cgColor
-        let title = label("PROVIDER / BALANCE", size: 18, bold: true)
+        let title = label("PLAN USAGE / OAUTH", size: 18, bold: true)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 316, width: 500, height: 26)
+        title.frame = NSRect(x: 28, y: 356, width: 500, height: 26)
         content.addSubview(title)
-        addField("Provider name", key: "name", value: model.providerSettings.name, y: 272, to: content)
-        addField("Base URL", key: "baseURL", value: model.providerSettings.baseURL, y: 232, to: content)
-        addField("Balance path", key: "balancePath", value: model.providerSettings.balancePath, y: 192, to: content)
-        addField("JSON field path", key: "balanceJSONPath", value: model.providerSettings.balanceJSONPath, y: 152, to: content)
-        addField("Refresh interval (sec)", key: "refreshInterval", value: String(Int(model.providerSettings.refreshInterval)), y: 112, to: content)
-        let environmentState = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?.isEmpty == false
-            ? "OPENAI_API_KEY detected in this process."
-            : "OPENAI_API_KEY is missing from this process; Finder-launched apps need the variable exported through launchd."
-        let note = NSTextField(wrappingLabelWithString: "\(environmentState) A failed request keeps the previous balance. The first request runs when the dashboard starts. Current saved balance: \(model.providerSettings.lastBalance)")
+        addField("Plan display name", key: "planLabel", value: "", y: 312, to: content)
+        addField("Usage bucket ID", key: "limitID", value: "", y: 272, to: content)
+        addField("Codex executable", key: "codexExecutable", value: "", y: 232, to: content)
+        addField("Refresh interval (min)", key: "refreshInterval", value: "", y: 192, to: content)
+        let note = NSTextField(wrappingLabelWithString: "ChatGPT OAuth is handled by the official Codex app-server and uses the same account as Codex. Tokens are stored and refreshed by Codex; Hermes Dashboard only reads the selected quota window. Leave the plan name blank to use the account plan type.")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
-        note.frame = NSRect(x: 28, y: 58, width: 560, height: 38)
+        note.frame = NSRect(x: 28, y: 117, width: 590, height: 58)
         content.addSubview(note)
-        let save = NSButton(title: "Apply", target: self, action: #selector(apply(_:)))
+
+        statusLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        statusLabel.textColor = NSColor.secondaryLabelColor
+        statusLabel.frame = NSRect(x: 28, y: 72, width: 590, height: 36)
+        content.addSubview(statusLabel)
+
+        let authorize = NSButton(title: "Authorize with ChatGPT", target: self, action: #selector(authorize(_:)))
+        authorize.bezelStyle = .rounded
+        authorize.frame = NSRect(x: 28, y: 24, width: 180, height: 30)
+        content.addSubview(authorize)
+        let save = NSButton(title: "Apply & Refresh", target: self, action: #selector(apply(_:)))
         save.bezelStyle = .rounded
-        save.frame = NSRect(x: 480, y: 18, width: 100, height: 28)
+        save.frame = NSRect(x: 480, y: 24, width: 140, height: 30)
         content.addSubview(save)
+        reloadFields()
     }
 
     private func label(_ text: String, size: CGFloat, bold: Bool = false) -> NSTextField {
@@ -764,20 +792,46 @@ private final class ProviderSettingsWindowController: NSWindowController, NSWind
         view.addSubview(label)
         let field = NSTextField(string: value)
         field.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        field.frame = NSRect(x: 220, y: y, width: 360, height: 26)
+        field.frame = NSRect(x: 220, y: y, width: 400, height: 26)
         view.addSubview(field)
         fields[key] = field
     }
 
     @objc private func apply(_ sender: NSButton) {
-        var settings = model.providerSettings
-        settings.name = fields["name"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.name
-        settings.baseURL = fields["baseURL"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.baseURL
-        settings.balancePath = fields["balancePath"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.balancePath
-        settings.balanceJSONPath = fields["balanceJSONPath"]?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? settings.balanceJSONPath
-        settings.refreshInterval = Double(fields["refreshInterval"]?.stringValue ?? "") ?? settings.refreshInterval
-        model.updateProviderSettings(settings)
-        window?.close()
+        saveFieldsAndRefresh()
+        statusLabel.stringValue = "Refreshing plan usage…"
+    }
+
+    @objc private func authorize(_ sender: NSButton) {
+        saveFieldsAndRefresh()
+        sender.isEnabled = false
+        statusLabel.stringValue = "Opening ChatGPT authorization…"
+        model.beginPlanOAuth { [weak self, weak sender] message in
+            self?.statusLabel.stringValue = message
+            sender?.isEnabled = true
+            self?.reloadFields()
+        }
+    }
+
+    private func reloadFields() {
+        guard !fields.isEmpty else { return }
+        let settings = model.planUsageSettings
+        fields["planLabel"]?.stringValue = settings.planLabel
+        fields["limitID"]?.stringValue = settings.limitID
+        fields["codexExecutable"]?.stringValue = settings.codexExecutable
+        fields["refreshInterval"]?.stringValue = String(Int(settings.refreshInterval / 60))
+        let identity = model.planUsage.email ?? "No ChatGPT account"
+        statusLabel.stringValue = "\(identity) · \(model.planUsage.status) · \(model.planUsage.allowanceText) · reset \(model.planUsage.resetCountdown())"
+    }
+
+    private func saveFieldsAndRefresh() {
+        var settings = model.planUsageSettings
+        settings.planLabel = fields["planLabel"]?.stringValue ?? settings.planLabel
+        settings.limitID = fields["limitID"]?.stringValue ?? settings.limitID
+        settings.codexExecutable = fields["codexExecutable"]?.stringValue ?? settings.codexExecutable
+        let minutes = Double(fields["refreshInterval"]?.stringValue ?? "") ?? settings.refreshInterval / 60
+        settings.refreshInterval = minutes * 60
+        model.updatePlanUsageSettings(settings)
     }
 }
 
@@ -789,7 +843,7 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 330), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 370), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Runtime Status Icons"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
@@ -823,19 +877,25 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
         let title = NSTextField(labelWithString: "RUNTIME STATUS ICONS")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 286, width: 500, height: 26)
+        title.frame = NSRect(x: 28, y: 326, width: 500, height: 26)
         content.addSubview(title)
         for (index, key) in RuntimeIconKey.allCases.enumerated() {
-            let y = 242 - CGFloat(index) * 36
+            let y = 282 - CGFloat(index) * 36
             let label = NSTextField(labelWithString: key.displayName)
             label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
             label.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
             label.frame = NSRect(x: 28, y: y + 4, width: 110, height: 18)
             content.addSubview(label)
             let popup = NSPopUpButton(frame: NSRect(x: 145, y: y, width: 150, height: 26), pullsDown: false)
-            popup.addItems(withTitles: (0..<6).map { "Pattern \($0 + 1)" } + ["Custom file"])
+            popup.addItems(withTitles: (0..<6).map { "Pattern \($0 + 1)" } + ["Bundled icon", "Custom file"])
             let current = model.layout.runtimeIcons[key.rawValue] ?? DashboardLayout.defaultRuntimeIcons[key.rawValue]!
-            popup.selectItem(at: current.name.hasPrefix("file:") ? 6 : current.pattern)
+            if current.name.hasPrefix("bundle:") {
+                popup.selectItem(at: 6)
+            } else if current.name.hasPrefix("file:") {
+                popup.selectItem(at: 7)
+            } else {
+                popup.selectItem(at: current.pattern)
+            }
             content.addSubview(popup)
             let x = NSTextField(string: format(current.x))
             x.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -861,7 +921,16 @@ private final class RuntimeIconSettingsWindowController: NSWindowController, NSW
     @objc private func apply(_ sender: NSButton) {
         var layout = model.layout
         for (key, popup, x, y, path) in rows {
-            let name = popup.indexOfSelectedItem == 6 && !path.stringValue.isEmpty ? "file:\(path.stringValue)" : "pattern-\(popup.indexOfSelectedItem)"
+            let name: String
+            switch popup.indexOfSelectedItem {
+            case 0..<6:
+                name = "pattern-\(popup.indexOfSelectedItem)"
+            case 6:
+                name = DashboardLayout.defaultRuntimeIcons[key.rawValue]?.name ?? "pattern-0"
+            default:
+                let customPath = path.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                name = customPath.isEmpty ? (layout.runtimeIcons[key.rawValue]?.name ?? "pattern-0") : "file:\(customPath)"
+            }
             layout.runtimeIcons[key.rawValue] = RuntimeIconStyle(name: name, x: CGFloat(Double(x.stringValue) ?? 28), y: CGFloat(Double(y.stringValue) ?? 5))
         }
         model.updateLayout(layout)
