@@ -52,7 +52,7 @@ hermes-done.png         hermes-error.png
 
 ## Runtime Status 数据
 
-Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、ChatGPT 套餐、套餐周剩余额度、下次重置倒计时和今日已结束 Codex session 的累计 Tokens。当天 Tokens 会按自然日持久保存为单调累计值，任务重新运行、短时读取失败、应用闲置或重启都不会把已确认的数值清零。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；session 卡片继续显示各会话的上下文占用。thinking 与套餐剩余比例会分别按强度和余量使用不同颜色。
+Runtime Status 会实时显示当前 model、thinking/reasoning 强度、Fast 状态、ChatGPT 套餐、套餐周剩余额度、下次重置倒计时和今日已结束 Codex session 的累计 Tokens。今日 Tokens 从 rollout 的每次用量增量计算，口径为非缓存输入加输出，不再把会话的历史累计值或缓存命中的重复上下文计入；当天结果会按自然日持久保存为单调累计值，任务重新运行、短时读取失败、应用闲置或重启都不会把已确认的数值清零。Codex 模式会优先读取 `~/.codex` 的线程数据库、当前 rollout 和 `~/.codex/config.toml`；session 卡片继续显示各会话的上下文占用。thinking 与套餐剩余比例会分别按强度和余量使用不同颜色。
 Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保留上一轮真实模型名。
 
 选择 `Codex Desktop` 后，左下角标题会切换为 `CODEX AGENT`，并从当前 Codex rollout 提取思考、工具、文件修改、搜索、状态、授权等待、错误和最终输出。信息统一显示为 `[THINKING]`、`[TOOLS]`、`[FILES]`、`[SEARCH]`、`[STATUS]`、`[APPROVAL]`、`[ERROR]`、`[RESULT]`、`[OUTPUT]`；其中等待用户授权使用醒目的深紫红色标签，授权完成后自动移除。标签各用不同颜色，正文只保留简短语义描述；Shell 参数和长控制命令不会直接显示。相邻同类活动会合并，文字以每帧四个字符的速度快速逐字出现。
@@ -61,11 +61,11 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。
 
-`Weather Settings…` 可以选择天气源和天气图标包，并设置图标的 X/Y 位置与 24–384 px 显示尺寸。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；天气行只显示天气状况，不附加来源字段。
+`Weather Settings…` 可以选择天气源和天气图标包，并设置图标的 X/Y 位置与 24–384 px 显示尺寸。默认图标包为 `Standard`；`Reference style` 使用 `Resources/WeatherAssets/Alternate/ReferenceStyle` 中的备选素材，缺少的夜间晴天图标自动回退到 `Static/07-moon.png`。默认天气源使用和风天气 QWeather；需要填写和风控制台分配的专属 API Host、项目中的 API KEY 凭据、城市或 LocationID，以及刷新间隔。API KEY 保存在 macOS 钥匙串中，其他设置保存在应用偏好设置中。启动时在后台读取钥匙串，因此 macOS 等待凭证授权时不会阻塞音乐、Runtime 或界面刷新。和风天气先通过 GeoAPI 解析城市，再调用 v1 实时天气接口；天气行只显示天气状况，不附加来源字段。
 
 设置数据位于项目目录之外：普通偏好（包括天气图标位置、套餐显示名称和上次成功的周用量）保存在 `~/Library/Preferences/com.hermes.dashboard.plist`，QWeather API KEY 保存在 macOS 钥匙串，ChatGPT OAuth 凭据由 Codex 管理，导入字体保存在 `~/Library/Application Support/Hermes Dashboard/Fonts`。删除项目源码或覆盖安装同一 Bundle ID 的 App 不会清除这些数据。
 
-天气源也可以切换为 Open-Meteo 或 macOS Weather。城市支持名称、LocationID 或经纬度；天气请求失败时继续使用 macOS Weather 缓存/辅助功能数据和内置降级值。仪表盘温度旁显示当前天气条件英文：`CLEAR`、`PARTLY CLOUDY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
+天气源也可以切换为 Open-Meteo 或 macOS Weather。城市支持名称、LocationID 或经纬度；天气请求失败时继续使用 macOS Weather 缓存/辅助功能数据和内置降级值。仪表盘温度旁显示当前天气条件短名称，例如 `CLEAR`、`PARTLY`、`CLOUDY`、`RAIN`、`SNOW` 或 `UNKNOWN`。
 
 设置窗口可以切换 Codex Desktop 和 Hermes Agent。程序会按下面的顺序查找状态文件：
 
@@ -82,7 +82,7 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 ## 系统数据源
 
-- Apple Music：通过 macOS Apple Events 读取当前歌曲、歌手、播放状态和进度。首次使用可能需要在“系统设置 → 隐私与安全性 → 自动化”允许 Hermes Dashboard 控制 Music。
+- 音乐：优先读取 macOS 控制中心的系统级 Now Playing 信息，可实时识别 Apple Music、Spotify、浏览器及其他接入系统媒体会话的播放器；Apple Music 另保留 Apple Events 降级读取。首次触发降级路径时，可能需要在“系统设置 → 隐私与安全性 → 自动化”允许 Hermes Dashboard 访问 Music。
 - Weather：先读取 macOS Weather 的本地缓存；缓存不可用时尝试读取 Weather.app 的辅助功能树。若 macOS 没有授予辅助功能权限，则使用最后可用/设计稿示例值。权限位置是“系统设置 → 隐私与安全性 → 辅助功能”。
 
 ## GIF 壁纸

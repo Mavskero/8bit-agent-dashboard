@@ -47,11 +47,11 @@ killall HermesDashboard 2>/dev/null || true
 - Active Session 布局为：最新 session 与标题位于同一个高亮内框；其余四个 session 在下方两行、每行两列。
 - Session 卡片显示标题、状态灯、上下文分段方块和右端百分比；最新 session 使用更高饱和度背景，明显区别于四个历史 session。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
-- 天气、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
+- 天气、系统级 Now Playing、Apple Music、GIF 壁纸和可替换天气/Agent 图片资源均有降级处理。
 - 设置窗口使用浅色高对比外观；每个颜色支持取色板和 R/G/B 数值编辑，双击色块会在 `DEFAULT DISPLAY` 指定的屏幕打开取色板。每个文字样式都有独立的 `Smooth + 8x` 开关；开启后使用 8x 字体位图、抗锯齿、字体平滑和高质量插值，默认值沿用当前已固化设置。
 - Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
 - Plan Usage / OAuth 设置通过官方 Codex app-server 读取 ChatGPT `codex` 周用量窗口；`BALANCE` 每 10 分钟刷新，`RESET` 服务端时间每 1 小时刷新，支持显示名称、bucket ID 和 Codex 路径。OAuth token 由 Codex 管理，读取失败保留缓存值。
-- Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、套餐、周剩余额度、重置倒计时和今日已结束 session 的累计 Tokens；累计值按自然日持久化且同一天只增不减，避免运行中、闲置、短时数据库读取失败或重启时归零，并在 session 结束后以 0.85 秒数字增长动画更新。额度按 >=50、20-49、<20 显示绿/黄/红。
+- Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、套餐、周剩余额度、重置倒计时和今日已结束 session 的累计 Tokens；Tokens 按 rollout 的非缓存输入增量加输出计算，不包含缓存命中的重复上下文或会话在当天以前的累计量。累计值按自然日持久化且同一天只增不减，避免运行中、闲置、短时数据库读取失败或重启时归零，并在 session 结束后以 0.85 秒数字增长动画更新。额度按 >=50、20-49、<20 显示绿/黄/红。
 - Codex 来源会让左下角模块切换为 `CODEX AGENT`，读取当前 rollout 的 `Reasoning`、`CommandExecution`、`FileChange`、`Extension`、MCP 和 `AgentMessage` 条目。界面使用九种彩色动作标签、合并相邻同类事件，并逐字显示精简正文；不渲染长命令参数和原始工具输出。
 - Codex/Hermes 的最终结果先显示通用的“正在总结输出结果”，再交给本机 Ollama `qwen3.5:2b` 总结。提示词根据活动区尺寸和用户字号提供显示容量，允许适当换行；预测到溢出或遇到省略号结尾时提前停在自然语句边界，并提示进入客户端查看。完成时清空过程事件，只以绿色 `[OUTPUT]` 流式显示；UI 不显示本地模型名称，失败时回退到本地精简文本。Codex 的未决授权调用显示为深紫红色 `[APPROVAL]`，收到对应工具结果后移除。
 - Runtime Status 七行默认图标来自 `Resources/RuntimeStatusIcons`：Model、Thinking、Fast mode、Plan、Balance、Reset、Tokens。已确认的 `05-legacy-balance.png` 作为备用资源保留。Runtime Icons 设置可切回六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y/Size（8–96 px）。
@@ -113,7 +113,7 @@ Runtime Status 行首从模块原点的标题下方开始，每行间距 32px；
 - `Sources/HermesDashboard/Models.swift`：`DashboardModel`、`DashboardLayout`、文字样式、运行状态和显示器偏好。
 - `Sources/HermesDashboard/DashboardView.swift`：主画布、时钟、Runtime Status、Hermes Agent、Active Session 绘制。
 - `Sources/HermesDashboard/PixelDrawing.swift`：像素字体、像素图形、边框和分段进度条。
-- `Sources/HermesDashboard/Services.swift`：Apple Music、Weather、状态 JSON、Codex SQLite/JSONL 实时读取。
+- `Sources/HermesDashboard/Services.swift`：系统级 Now Playing / Apple Music、Weather、状态 JSON、Codex SQLite/JSONL 实时读取。
 - `Sources/HermesDashboard/SettingsWindowController.swift`：主设置窗口、字体样式编辑、布局/透明度编辑、文件选择器。
 - `Resources/Fonts/`：随 App 打包的 Silkscreen 字体。
 - `outputs/HermesDashboard.app.zip`：当前可交付压缩包。
@@ -125,7 +125,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 1. `~/.codex/sqlite/codex-dev.db` 的 `local_thread_catalog`：最近 session 的标题和更新时间。
 2. `~/.codex/thread_history_1.sqlite` 的 `thread_turns`：最新 turn 状态，映射为 `RUNNING`、`DONE`、`ERROR`。
 3. `~/.codex/state_5.sqlite` 的 `threads`：rollout 路径、token 计数等。
-4. 对每个 rollout 文件尾部读取 `token_count` 事件，优先使用 `last_token_usage` 计算当前上下文占用；没有时回退到 `total_token_usage` 或 `tokens_used`。
+4. 对每个 rollout 文件尾部读取 `token_count` 事件，优先使用 `last_token_usage` 计算当前上下文占用；今日 Tokens 则扫描已完成任务截止点前的累计事件差值，只累加非缓存输入和输出。
 5. 如果 SQLite 不可用，则回退到 `~/.codex/session_index.jsonl`，只提供最近 5 个标题和更新时间。
 
 `DashboardModel` 默认每 2 秒刷新动态数据；`DashboardView` 使用 0.12 秒动画 timer 驱动像素小人、运行灯和 GIF，另有 1 秒 timer 驱动时间冒号。
@@ -155,7 +155,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 
 - `README.md` 中仍有早期版本的“7:9”描述，当前代码和交付视觉已经是 9:7；后续若更新 README，应以本文件和 `DashboardView.swift` 当前常量为准。
 - `state_5.sqlite`、`thread_history_1.sqlite` 和 `codex-dev.db` 是本机运行时数据，不属于项目文件，不能复制进仓库。
-- Weather.app 和 Apple Music 的读取可能需要 macOS 隐私权限；权限不足时程序应继续使用降级数据，不要把权限错误当作启动失败。
+- Weather.app 和 Apple Music 降级读取可能需要 macOS 隐私权限；系统级 Now Playing 不依赖播放器专属的 Apple Events 权限。QWeather Keychain 凭证在后台加载，系统等待钥匙串授权时不能阻塞音乐、Runtime 或主界面刷新。权限不足时程序应继续使用降级数据，不要把权限错误当作启动失败。
 - 全屏 screen-saver 层级窗口会影响文件选择器，所以设置中的文件面板通过临时降低父窗口层级来打开；修改窗口层级时需要复测 Choose GIF / Choose Folder。
 - 套餐用量依赖本机可执行的 `codex` 和 ChatGPT 登录。设置中的 OAuth 浏览器流程与 Codex 共用账号和凭据；Dashboard 本身不读取 token。
 - Codex 闲置时若状态源暂时返回空模型或 `custom`，Runtime Status 会保留上一轮真实模型名。

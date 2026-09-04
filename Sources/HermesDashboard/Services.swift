@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import ImageIO
 
@@ -468,12 +469,96 @@ private final class AppleScriptRunner {
     }
 }
 
+private typealias MediaRemoteNowPlayingCallback = @convention(block) (NSDictionary?) -> Void
+private typealias MediaRemoteGetNowPlayingInfo = @convention(c) (DispatchQueue, @escaping MediaRemoteNowPlayingCallback) -> Void
+
+/// Reads the system-wide Now Playing session. MediaRemote is loaded at runtime
+/// so Apple Music, Spotify, browsers, and other Control Center providers work
+/// without making a separate Apple Events request for each player. The
+/// Apple Music script below remains as a compatibility fallback.
+private final class MediaRemoteNowPlayingReader {
+    static let shared = MediaRemoteNowPlayingReader()
+
+    private let handle: UnsafeMutableRawPointer?
+    private let getNowPlayingInfo: MediaRemoteGetNowPlayingInfo?
+
+    private init() {
+        let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
+        handle = dlopen(path, RTLD_NOW)
+        if let handle, let symbol = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") {
+            getNowPlayingInfo = unsafeBitCast(symbol, to: MediaRemoteGetNowPlayingInfo.self)
+        } else {
+            getNowPlayingInfo = nil
+        }
+    }
+
+    func read(timeout: TimeInterval = 1.0) -> MusicSnapshot? {
+        guard let getNowPlayingInfo else { return nil }
+        let semaphore = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var result: MusicSnapshot?
+        getNowPlayingInfo(DispatchQueue.global(qos: .utility)) { [weak self] dictionary in
+            defer { semaphore.signal() }
+            guard let self, let dictionary else { return }
+            let title = self.stringValue(named: "kMRMediaRemoteNowPlayingInfoTitle", in: dictionary)
+            guard !title.isEmpty else { return }
+            let artist = self.stringValue(named: "kMRMediaRemoteNowPlayingInfoArtist", in: dictionary)
+            let album = self.stringValue(named: "kMRMediaRemoteNowPlayingInfoAlbum", in: dictionary)
+            let rate = self.numberValue(named: "kMRMediaRemoteNowPlayingInfoPlaybackRate", in: dictionary)
+            let position = self.numberValue(named: "kMRMediaRemoteNowPlayingInfoElapsedTime", in: dictionary)
+            let duration = self.numberValue(named: "kMRMediaRemoteNowPlayingInfoDuration", in: dictionary)
+            let snapshot = MusicSnapshot(
+                artist: artist.uppercased(),
+                title: title.uppercased(),
+                album: album,
+                isPlaying: rate > 0,
+                position: position,
+                duration: duration
+            )
+            lock.lock()
+            result = snapshot
+            lock.unlock()
+        }
+        guard semaphore.wait(timeout: .now() + timeout) == .success else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return result
+    }
+
+    private func key(named symbolName: String) -> String {
+        guard let handle,
+              let storage = dlsym(handle, symbolName)?.assumingMemoryBound(to: CFString?.self),
+              let value = storage.pointee else { return symbolName }
+        return value as String
+    }
+
+    private func stringValue(named symbolName: String, in dictionary: NSDictionary) -> String {
+        (dictionary[key(named: symbolName)] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func numberValue(named symbolName: String, in dictionary: NSDictionary) -> Double {
+        (dictionary[key(named: symbolName)] as? NSNumber)?.doubleValue ?? 0
+    }
+}
+
 final class AppleMusicService {
     private let queue = DispatchQueue(label: "hermes-dashboard.music", qos: .utility)
+    private let fetchLock = NSLock()
+    private var isFetching = false
 
     func fetch(completion: @escaping (MusicSnapshot) -> Void) {
+        fetchLock.lock()
+        guard !isFetching else {
+            fetchLock.unlock()
+            return
+        }
+        isFetching = true
+        fetchLock.unlock()
         queue.async {
-            let snapshot = self.readCurrentTrack() ?? .notPlaying
+            let snapshot = MediaRemoteNowPlayingReader.shared.read() ?? self.readCurrentTrack() ?? .notPlaying
+            self.fetchLock.lock()
+            self.isFetching = false
+            self.fetchLock.unlock()
             DispatchQueue.main.async { completion(snapshot) }
         }
     }
@@ -914,8 +999,15 @@ final class RuntimeStatusService {
     private let qwenSummaryService = LocalQwenSummaryService()
     private var completedSummaries: [String: LocalSummaryResult] = [:]
     private var pendingSummaries = Set<String>()
-    private let dailyTokenDateKey = "runtime.codex.dailyTokens.date"
-    private let dailyTokenValueKey = "runtime.codex.dailyTokens.value"
+    private let dailyFreshTokenDateKey = "runtime.codex.dailyFreshTokens.v2.date"
+    private let dailyFreshTokenValueKey = "runtime.codex.dailyFreshTokens.v2.value"
+    private var dailyRolloutTokenCache: [String: (dayStart: TimeInterval, completedThrough: TimeInterval, value: Int)] = [:]
+    private let rolloutFractionalTimestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private let rolloutTimestampFormatter = ISO8601DateFormatter()
 
     func fetch(source: RuntimeSource, activityLayout: ActivitySummaryLayout, completion: @escaping (RuntimeStatus) -> Void) {
         queue.async {
@@ -1328,14 +1420,21 @@ private struct HermesSnapshot {
             let turnRowsResult = readSQLiteRowsIfAvailable(path: historyPath, query: "SELECT thread_id, status, started_at, completed_at FROM thread_turns ORDER BY started_at DESC;")
             let turnRows = turnRowsResult ?? []
             var latestTurns: [String: [String: Any]] = [:]
+            var latestCompletedAt: [String: TimeInterval] = [:]
             for row in turnRows {
                 guard let threadID = row["thread_id"] as? String else { continue }
                 let started = (row["started_at"] as? NSNumber)?.doubleValue ?? 0
                 let previous = (latestTurns[threadID]?["started_at"] as? NSNumber)?.doubleValue ?? -1
                 if started > previous { latestTurns[threadID] = row }
+                let status = (row["status"] as? String ?? "").lowercased()
+                if ["completed", "failed", "interrupted"].contains(status),
+                   let completedAt = (row["completed_at"] as? NSNumber)?.doubleValue,
+                   completedAt > (latestCompletedAt[threadID] ?? 0) {
+                    latestCompletedAt[threadID] = completedAt
+                }
             }
             let measuredTodayTokens: Int? = stateRowsResult != nil && turnRowsResult != nil
-                ? completedTodayTokens(states: states, latestTurns: latestTurns)
+                ? completedTodayFreshTokens(states: states, completedThrough: latestCompletedAt)
                 : nil
             let todayTokens = stableTodayTokens(measured: measuredTodayTokens)
 
@@ -1401,18 +1500,78 @@ private struct HermesSnapshot {
         return CodexSnapshot(sessions: legacySessions, activityLog: [], agentState: .idle, contextPercent: legacySessions[0].contextPercent, todayTokens: stableTodayTokens(measured: nil), model: metadata.model, thinking: metadata.thinking, fastMode: metadata.fastMode, provider: metadata.provider, hasContextData: legacySessions.contains { $0.contextPercent > 0 })
     }
 
-    private func completedTodayTokens(states: [String: [String: Any]], latestTurns: [String: [String: Any]], now: Date = Date()) -> Int {
+    private func completedTodayFreshTokens(
+        states: [String: [String: Any]],
+        completedThrough: [String: TimeInterval],
+        now: Date = Date()
+    ) -> Int {
         let startOfDay = Calendar.current.startOfDay(for: now).timeIntervalSince1970
         var total: Int64 = 0
-        for (threadID, turn) in latestTurns {
-            let status = (turn["status"] as? String ?? "").lowercased()
-            guard ["completed", "failed", "interrupted"].contains(status),
-                  let completedAt = (turn["completed_at"] as? NSNumber)?.doubleValue,
-                  completedAt >= startOfDay,
-                  let tokens = (states[threadID]?["tokens_used"] as? NSNumber)?.int64Value else { continue }
-            total += max(tokens, 0)
+        for (threadID, completedAt) in completedThrough {
+            guard completedAt >= startOfDay,
+                  let path = states[threadID]?["rollout_path"] as? String else { continue }
+            let value = freshTokens(
+                in: path,
+                from: startOfDay,
+                completedThrough: completedAt
+            )
+            total += Int64(max(value, 0))
         }
         return Int(min(total, Int64(Int.max)))
+    }
+
+    private func freshTokens(in path: String, from startOfDay: TimeInterval, completedThrough: TimeInterval) -> Int {
+        if let cached = dailyRolloutTokenCache[path],
+           cached.dayStart == startOfDay,
+           cached.completedThrough == completedThrough {
+            return cached.value
+        }
+        guard FileManager.default.fileExists(atPath: path),
+              let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)),
+              let data = try? handle.readToEnd(),
+              let text = String(data: data, encoding: .utf8) else { return 0 }
+        try? handle.close()
+
+        var previousTotal: Int64?
+        var previousFresh: Int64?
+        var measured: Int64 = 0
+        for line in text.split(whereSeparator: \.isNewline) {
+            guard line.contains("\"token_count\""),
+                  let lineData = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let timestamp = object["timestamp"] as? String,
+                  let timestampDate = rolloutTimestamp(timestamp),
+                  timestampDate.timeIntervalSince1970 <= completedThrough,
+                  let payload = object["payload"] as? [String: Any],
+                  let info = payload["info"] as? [String: Any],
+                  let usage = info["total_token_usage"] as? [String: Any] else { continue }
+
+            let input = (usage["input_tokens"] as? NSNumber)?.int64Value ?? 0
+            let cachedInput = (usage["cached_input_tokens"] as? NSNumber)?.int64Value ?? 0
+            let output = (usage["output_tokens"] as? NSNumber)?.int64Value ?? 0
+            let cumulativeTotal = (usage["total_tokens"] as? NSNumber)?.int64Value ?? input + output
+            let cumulativeFresh = max(input - cachedInput, 0) + max(output, 0)
+
+            if let previousTotal, let previousFresh,
+               timestampDate.timeIntervalSince1970 >= startOfDay {
+                let increment = cumulativeTotal < previousTotal
+                    ? cumulativeFresh
+                    : max(cumulativeFresh - previousFresh, 0)
+                measured += increment
+            } else if previousTotal == nil,
+                      timestampDate.timeIntervalSince1970 >= startOfDay {
+                measured += cumulativeFresh
+            }
+            previousTotal = cumulativeTotal
+            previousFresh = cumulativeFresh
+        }
+        let value = Int(min(measured, Int64(Int.max)))
+        dailyRolloutTokenCache[path] = (startOfDay, completedThrough, value)
+        return value
+    }
+
+    private func rolloutTimestamp(_ value: String) -> Date? {
+        rolloutFractionalTimestampFormatter.date(from: value) ?? rolloutTimestampFormatter.date(from: value)
     }
 
     private func stableTodayTokens(measured: Int?, now: Date = Date()) -> Int? {
@@ -1423,20 +1582,20 @@ private struct HermesSnapshot {
         formatter.dateFormat = "yyyy-MM-dd"
         let today = formatter.string(from: now)
         let defaults = UserDefaults.standard
-        let cachedDate = defaults.string(forKey: dailyTokenDateKey)
+        let cachedDate = defaults.string(forKey: dailyFreshTokenDateKey)
 
         if cachedDate != today {
             guard let measured else { return nil }
             let value = max(measured, 0)
-            defaults.set(today, forKey: dailyTokenDateKey)
-            defaults.set(value, forKey: dailyTokenValueKey)
+            defaults.set(today, forKey: dailyFreshTokenDateKey)
+            defaults.set(value, forKey: dailyFreshTokenValueKey)
             return value
         }
 
-        let cached = max(defaults.integer(forKey: dailyTokenValueKey), 0)
+        let cached = max(defaults.integer(forKey: dailyFreshTokenValueKey), 0)
         guard let measured else { return cached }
         let value = max(cached, measured)
-        if value != cached { defaults.set(value, forKey: dailyTokenValueKey) }
+        if value != cached { defaults.set(value, forKey: dailyFreshTokenValueKey) }
         return value
     }
 

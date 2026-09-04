@@ -588,7 +588,10 @@ struct WeatherSettings: Codable, Equatable {
                 value.city = legacyCity
             }
         }
-        value.apiKey = WeatherCredentialStore.loadAPIKey()
+        // Keychain reads may display a macOS authorization prompt after an
+        // ad-hoc rebuild. Load the credential asynchronously from the model's
+        // start path so that Music and Runtime polling are never blocked here.
+        value.apiKey = ""
         return value
     }
 
@@ -993,6 +996,7 @@ final class DashboardModel: NSObject {
     private var activeActivity: (event: AgentActivityEvent, characters: [Character], revealed: Int)?
     private var completedActivityIDs = Set<String>()
     private var activityPauseTicks = 0
+    private var weatherCredentialLoadID: UUID?
 
     override init() {
         var storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
@@ -1022,6 +1026,7 @@ final class DashboardModel: NSObject {
     }
 
     func start() {
+        loadWeatherCredential()
         scheduleActivityStreamTimer()
         refreshAll()
         refreshPlanUsage(updateBalance: true, updateReset: true)
@@ -1126,6 +1131,7 @@ final class DashboardModel: NSObject {
     }
 
     func updateWeatherSettings(_ settings: WeatherSettings) {
+        weatherCredentialLoadID = nil
         var updated = settings
         updated.apiHost = updated.apiHost.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.apiKey = updated.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1138,6 +1144,21 @@ final class DashboardModel: NSObject {
         updated.save()
         scheduleWeatherTimer()
         refreshWeather()
+    }
+
+    private func loadWeatherCredential() {
+        let requestID = UUID()
+        weatherCredentialLoadID = requestID
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let apiKey = WeatherCredentialStore.loadAPIKey()
+            DispatchQueue.main.async {
+                guard let self, self.weatherCredentialLoadID == requestID else { return }
+                self.weatherCredentialLoadID = nil
+                self.weatherSettings.apiKey = apiKey
+                self.refreshWeather()
+                self.notifyChange()
+            }
+        }
     }
 
     func refreshAll() {
