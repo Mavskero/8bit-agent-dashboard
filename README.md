@@ -19,7 +19,7 @@ open build/HermesDashboard.app
 
 ## 字体、颜色与字号
 
-设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather Condition、Now Playing、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等文字。每一项都支持 X/Y 画布坐标、字体、字号、颜色和平滑渲染开关；面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
+设置窗口的 `TEXT STYLE OVERRIDES` 区域可以分别修改 Clock、Date、Temperature、Weather、Music、Runtime Status、Hermes Agent、Active Session 和 Session Context Percent 等元素。天气的 X 表示最后一个字符的右边界，天气名称变长时会向左展开。音乐区的波浪动画、`NOW PLAYING`、歌名和歌手各有独立设置；每一项都支持 X/Y 画布坐标、字号或图形尺寸、颜色，文字项还支持字体和平滑渲染。面板内文字的坐标相对于对应面板原点。颜色既可通过色块选择，也可直接编辑 R/G/B 数值，双击色块后取色板会出现在 `DEFAULT DISPLAY` 指定的屏幕。
 
 - `Silkscreen-Regular` / `Silkscreen-Bold`：随 App 打包的开源像素字体，默认用于目标稿风格
 - `Pixelon`：随 App 打包的像素字体，项目内使用该字体的默认文字无需依赖系统预装字体
@@ -57,7 +57,7 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 选择 `Codex Desktop` 后，左下角标题会切换为 `CODEX AGENT`，并从当前 Codex rollout 提取思考、工具、文件修改、搜索、状态、授权等待、错误和最终输出。信息统一显示为 `[THINKING]`、`[TOOLS]`、`[FILES]`、`[SEARCH]`、`[STATUS]`、`[APPROVAL]`、`[ERROR]`、`[RESULT]`、`[OUTPUT]`；其中等待用户授权使用醒目的深紫红色标签，授权完成后自动移除。标签各用不同颜色，正文只保留简短语义描述；Shell 参数和长控制命令不会直接显示。相邻同类活动会合并，文字以每帧四个字符的速度快速逐字出现。
 
-最终输出不会直接进入信息流。Dashboard 会先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）生成以核心结论为主、可适当换行的纯文本摘要。提示词会根据活动区和用户设置的字号给出行数及容量目标；内容放不下时省略展开步骤，并提示进入客户端查看详情。摘要完成后会清空此前的思考和工具过程，只以 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称，模型不可用时使用本地精简结果。
+最终输出不会直接进入信息流。Dashboard 会先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）生成以核心结论为主、可适当换行的纯文本摘要。提示词会根据活动区和用户设置的字号给出行数及容量目标；预测到内容放不下或模型以省略号收尾时，会提前停在自然语句边界并显示“详情请进入客户端查看”。摘要完成后会清空此前的思考和工具过程，只以绿色 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称，模型不可用时使用本地精简结果。
 
 主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。
 

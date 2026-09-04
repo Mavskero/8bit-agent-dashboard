@@ -52,8 +52,8 @@ killall HermesDashboard 2>/dev/null || true
 - Import Font… 会把字体保存到 `~/Library/Application Support/Hermes Dashboard/Fonts`，立即加入字体列表并在后续启动时自动注册。
 - Plan Usage / OAuth 设置通过官方 Codex app-server 读取 ChatGPT `codex` 周用量窗口；`BALANCE` 每 10 分钟刷新，`RESET` 服务端时间每 1 小时刷新，支持显示名称、bucket ID 和 Codex 路径。OAuth token 由 Codex 管理，读取失败保留缓存值。
 - Runtime Status 实时显示 Codex model、thinking/reasoning 强度、Fast 状态、套餐、周剩余额度、重置倒计时和今日已结束 session 的累计 Tokens；累计值按自然日持久化且同一天只增不减，避免运行中、闲置、短时数据库读取失败或重启时归零，并在 session 结束后以 0.85 秒数字增长动画更新。额度按 >=50、20-49、<20 显示绿/黄/红。
-- Codex 来源会让左下角模块切换为 `CODEX AGENT`，读取当前 rollout 的 `Reasoning`、`CommandExecution`、`FileChange`、`Extension`、MCP 和 `AgentMessage` 条目。界面使用八种彩色动作标签、合并相邻同类事件，并逐字显示精简正文；不渲染长命令参数和原始工具输出。
-- Codex/Hermes 的最终结果先显示通用的“正在总结输出结果”，再交给本机 Ollama `qwen3.5:2b` 总结。提示词根据活动区尺寸和用户字号提供显示容量，允许适当换行；放不下的步骤可省略并提示进入客户端查看。完成时清空过程事件，只流式显示 `[OUTPUT]`；UI 不显示本地模型名称，失败时回退到本地精简文本。Codex 的未决授权调用显示为深紫红色 `[APPROVAL]`，收到对应工具结果后移除。
+- Codex 来源会让左下角模块切换为 `CODEX AGENT`，读取当前 rollout 的 `Reasoning`、`CommandExecution`、`FileChange`、`Extension`、MCP 和 `AgentMessage` 条目。界面使用九种彩色动作标签、合并相邻同类事件，并逐字显示精简正文；不渲染长命令参数和原始工具输出。
+- Codex/Hermes 的最终结果先显示通用的“正在总结输出结果”，再交给本机 Ollama `qwen3.5:2b` 总结。提示词根据活动区尺寸和用户字号提供显示容量，允许适当换行；预测到溢出或遇到省略号结尾时提前停在自然语句边界，并提示进入客户端查看。完成时清空过程事件，只以绿色 `[OUTPUT]` 流式显示；UI 不显示本地模型名称，失败时回退到本地精简文本。Codex 的未决授权调用显示为深紫红色 `[APPROVAL]`，收到对应工具结果后移除。
 - Runtime Status 七行默认图标来自 `Resources/RuntimeStatusIcons`：Model、Thinking、Fast mode、Plan、Balance、Reset、Tokens。已确认的 `05-legacy-balance.png` 作为备用资源保留。Runtime Icons 设置可切回六种内置像素图案或自定义 PNG/GIF 路径，并可编辑每项 X/Y/Size（8–96 px）。
 - `Weather Settings…` 默认选择和风天气 QWeather，可配置专属 API Host、API KEY、城市/LocationID/经纬度、刷新间隔，以及天气图标 X/Y 和 24–384 px 尺寸。API KEY 存入 macOS 钥匙串；也可切换 Open-Meteo 或 macOS Weather，失败时使用系统缓存/降级值。
 
@@ -71,7 +71,7 @@ runtimeTitleSpacing = 48
 runtimeIconTitleSpacing = 28
 ```
 
-文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`，其中 `Weather Condition`、`Session Context Percent` 和 `Active Session · Last Conversation` 都有独立的字体与坐标设置。套餐用量默认读取 Codex app-server 的 `codex` bucket 10080 分钟窗口，刷新间隔 30 分钟；用户可覆盖套餐显示名。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`，位置为 X=560、Y=48、尺寸 128。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
+文字样式的字体、字号、颜色和 X/Y 坐标已全部写入 `DashboardStyles.defaults`。`Weather · Right Edge` 的 X 是天气字段最后一个字符的固定右边界；旧设置首次加载时会把右边界放到气温左侧 16px，再保存为绝对坐标。音乐区按波浪动画和 `NOW PLAYING`、歌名、歌手三行排列，这四项分别支持位置、尺寸和颜色设置。`Session Context Percent` 和 `Active Session · Last Conversation` 也有独立设置。套餐用量默认读取 Codex app-server 的 `codex` bucket 10080 分钟窗口，刷新间隔 30 分钟；用户可覆盖套餐显示名。默认天气源为 QWeather，城市为 Fuzhou，刷新间隔为 30 分钟；默认天气图标来自 `Resources/WeatherAssets/Static`，位置为 X=560、Y=48、尺寸 128。默认壁纸为 `Resources/kirby_s_chill_land.gif`，由 `build.sh` 自动复制到 App Bundle；设置中选择的外部 GIF 仍会覆盖它。点击 `Clear` 后会记录清除偏好，避免下次启动自动恢复 Bundle 壁纸。
 
 ## 关键视觉参数
 

@@ -319,7 +319,7 @@ private final class LocalQwenSummaryService {
         1. 保留对象、核心结论、关键数字以及异常或限制。
         2. 优先说明发生了什么、结果如何、是否需要用户处理。
         3. 根据内容适当换行；不使用标题、Markdown、列表或前缀。
-        4. 以总结为主。需要展开的操作步骤或细节可以省略，并在末尾写“详情请进入客户端查看”。
+        4. 以总结为主。不要以省略号收尾；预计内容放不下时，提前结束完整语句，把展开的操作步骤或细节省略，并在末尾写“详情请进入客户端查看”。
         5. 不解释总结过程，不添加原文没有的信息。内容没有异常时直接陈述结果。
 
         输入内容：
@@ -391,26 +391,59 @@ private final class LocalQwenSummaryService {
     }
 
     private func fitSummary(_ text: String, layout: ActivitySummaryLayout) -> String {
-        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return "任务已完成，详情请进入客户端查看" }
-        if summaryFits(normalized, layout: layout) { return normalized }
-
         let detail = "详情请进入客户端查看"
-        let characters = Array(normalized)
+        var normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var requiresDetailNotice = false
+        guard !normalized.isEmpty else { return "任务已完成，详情请进入客户端查看" }
+        if hasTrailingEllipsis(normalized) {
+            requiresDetailNotice = true
+            while let last = normalized.last, last == "." || last == "…" || last == "。" {
+                normalized.removeLast()
+            }
+            normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+            normalized = finishAtNaturalBoundary(normalized)
+            let earlyEnding = normalized.isEmpty ? detail : "\(normalized)\n\(detail)"
+            if summaryFits(earlyEnding, layout: layout) { return earlyEnding }
+        }
+        if !requiresDetailNotice, summaryFits(normalized, layout: layout) { return normalized }
+
+        let summaryBody = normalized
+            .replacingOccurrences(of: "\n\(detail)", with: "")
+            .replacingOccurrences(of: detail, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let characters = Array(summaryBody)
         var lower = 0
         var upper = characters.count
         while lower < upper {
             let middle = (lower + upper + 1) / 2
             let prefix = String(characters.prefix(middle)).trimmingCharacters(in: .whitespacesAndNewlines)
-            let candidate = prefix.isEmpty ? detail : "\(prefix)…\n\(detail)"
+            let candidate = prefix.isEmpty ? detail : "\(prefix)。\n\(detail)"
             if summaryFits(candidate, layout: layout) {
                 lower = middle
             } else {
                 upper = middle - 1
             }
         }
-        let prefix = String(characters.prefix(lower)).trimmingCharacters(in: .whitespacesAndNewlines)
-        return prefix.isEmpty ? detail : "\(prefix)…\n\(detail)"
+        let prefix = finishAtNaturalBoundary(String(characters.prefix(lower)))
+        return prefix.isEmpty ? detail : "\(prefix)\n\(detail)"
+    }
+
+    private func hasTrailingEllipsis(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasSuffix("...") || trimmed.hasSuffix("……") || trimmed.hasSuffix("…")
+    }
+
+    private func finishAtNaturalBoundary(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let sentenceMarks = CharacterSet(charactersIn: "。！？!?；;\n")
+        if let boundary = trimmed.unicodeScalars.lastIndex(where: { sentenceMarks.contains($0) }) {
+            let end = trimmed.unicodeScalars.index(after: boundary)
+            let complete = String(trimmed.unicodeScalars[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if complete.count >= min(16, trimmed.count) { return complete }
+        }
+        let cleaned = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "，,、：:；;-.… "))
+        return cleaned.isEmpty ? "" : cleaned + "。"
     }
 
     private func summaryFits(_ text: String, layout: ActivitySummaryLayout) -> Bool {

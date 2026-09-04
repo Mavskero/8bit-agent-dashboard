@@ -89,8 +89,10 @@ enum DashboardStyleKey: String, CaseIterable {
     case date
     case temperature
     case weatherCity
-    case artist
+    case musicVisualizer
+    case musicStatus
     case title
+    case artist
     case runtime
     case agent
     case agentActivity
@@ -105,9 +107,11 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return "Clock"
         case .date: return "Date"
         case .temperature: return "Temperature"
-        case .weatherCity: return "Weather Condition"
-        case .artist: return "Now Playing · Artist"
-        case .title: return "Now Playing · Title"
+        case .weatherCity: return "Weather · Right Edge"
+        case .musicVisualizer: return "Music · Wave"
+        case .musicStatus: return "Music · Now Playing"
+        case .title: return "Music · Track"
+        case .artist: return "Music · Artist"
         case .runtime: return "Runtime Status"
         case .agent: return "Hermes Agent"
         case .agentActivity: return "Hermes Agent · Activity"
@@ -126,9 +130,11 @@ enum DashboardStyleKey: String, CaseIterable {
         case .clock: return CGPoint(x: 42, y: 48)
         case .date: return CGPoint(x: 42, y: 186)
         case .temperature: return CGPoint(x: 66, y: 186)
-        case .weatherCity: return CGPoint(x: 400, y: 186)
-        case .artist: return CGPoint(x: 42, y: 252)
+        case .weatherCity: return CGPoint(x: 560, y: 186)
+        case .musicVisualizer: return CGPoint(x: 42, y: 252)
+        case .musicStatus: return CGPoint(x: 106, y: 252)
         case .title: return CGPoint(x: 42, y: 287)
+        case .artist: return CGPoint(x: 42, y: 322)
         case .runtime: return CGPoint(x: 30, y: 22)
         case .agent: return CGPoint(x: 18, y: 18)
         case .agentActivity: return CGPoint(x: 288, y: 66)
@@ -149,9 +155,11 @@ struct DashboardStyles: Codable, Equatable {
             DashboardStyleKey.clock.rawValue: TextStyle(fontName: "Pixelon", pointSize: 166, colorHex: "FDFAF6", x: 38, y: 27, smoothRendering: false),
             DashboardStyleKey.date.rawValue: TextStyle(fontName: "YuMincho +36p Kana", pointSize: 40, colorHex: "FAF3E8", x: 42, y: 186, smoothRendering: false),
             DashboardStyleKey.temperature.rawValue: TextStyle(fontName: "Pixelon", pointSize: 36, colorHex: "72EDF2", x: 220, y: 230, smoothRendering: true),
-            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 400, y: 186, smoothRendering: false),
-            DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 28, colorHex: "64EBEE", x: 42, y: 252, smoothRendering: true),
+            DashboardStyleKey.weatherCity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 560, y: 186, smoothRendering: false),
+            DashboardStyleKey.musicVisualizer.rawValue: TextStyle(fontName: "Pixelon", pointSize: 16, colorHex: "238FA4", x: 42, y: 252, smoothRendering: false),
+            DashboardStyleKey.musicStatus.rawValue: TextStyle(fontName: "Pixelon", pointSize: 20, colorHex: "64EBEE", x: 106, y: 252, smoothRendering: false),
             DashboardStyleKey.title.rawValue: TextStyle(fontName: "Yuanti TC", pointSize: 24, colorHex: "F9F0E2", x: 42, y: 287, smoothRendering: true),
+            DashboardStyleKey.artist.rawValue: TextStyle(fontName: "Yuanti SC", pointSize: 22, colorHex: "64EBEE", x: 42, y: 322, smoothRendering: true),
             DashboardStyleKey.runtime.rawValue: TextStyle(fontName: "Pixelon", pointSize: 39, colorHex: "FBF5ED", x: 30, y: 22, smoothRendering: true),
             DashboardStyleKey.agent.rawValue: TextStyle(fontName: "Zapf Dingbats", pointSize: 28, colorHex: "64EBEE", x: 18, y: 18, smoothRendering: false),
             DashboardStyleKey.agentActivity.rawValue: TextStyle(fontName: "Pixelon", pointSize: 14, colorHex: "F5EAD2", x: 288, y: 66, smoothRendering: true),
@@ -174,11 +182,13 @@ struct DashboardStyles: Codable, Equatable {
     static func load() -> DashboardStyles {
         guard let data = UserDefaults.standard.data(forKey: "dashboardStyles"),
               let decoded = try? JSONDecoder().decode(DashboardStyles.self, from: data) else {
+            UserDefaults.standard.set(true, forKey: "didMigrateWeatherRightEdgeV2")
             return .defaults
         }
         var merged = DashboardStyles.defaults
         let shouldMigrateLegacyPixelStyles = !UserDefaults.standard.bool(forKey: "didMigrateLegacyPixelStyles")
         let shouldResetSmoothRendering = !UserDefaults.standard.bool(forKey: "didMigrateSmoothRenderingDefaults")
+        let shouldMigrateMusicLayout = decoded.values[DashboardStyleKey.musicStatus.rawValue] == nil
         for key in DashboardStyleKey.allCases {
             if let saved = decoded.values[key.rawValue] {
                 var migrated = saved
@@ -197,6 +207,10 @@ struct DashboardStyles: Codable, Equatable {
                 }
                 merged.values[key.rawValue] = migrated
             }
+        }
+        if shouldMigrateMusicLayout, var artist = merged.values[DashboardStyleKey.artist.rawValue] {
+            artist.y += 70
+            merged.values[DashboardStyleKey.artist.rawValue] = artist
         }
         if let legacyActiveSession = decoded.values["activeSession"] {
             var legacyTitle = legacyActiveSession
@@ -219,6 +233,8 @@ struct DashboardStyles: Codable, Equatable {
         }
         if shouldResetSmoothRendering {
             UserDefaults.standard.set(true, forKey: "didMigrateSmoothRenderingDefaults")
+        }
+        if shouldResetSmoothRendering || shouldMigrateMusicLayout {
             merged.save()
         }
         return merged
@@ -935,6 +951,7 @@ final class DashboardModel: NSObject {
     private(set) var streamedActivityLog: [AgentActivityEvent] = []
     private(set) var displayedTodayTokens = 0
     var weatherCity: String { weatherSettings.city }
+    var usesWeatherRightEdge: Bool { UserDefaults.standard.bool(forKey: "didMigrateWeatherRightEdgeV2") }
     var onChange: (() -> Void)?
 
     var runtimeSource: RuntimeSource {
@@ -1054,6 +1071,15 @@ final class DashboardModel: NSObject {
         styles.setStyle(style, for: key)
         styles.save()
         notifyChange()
+    }
+
+    func migrateWeatherRightEdge(to rightEdge: CGFloat) {
+        guard !usesWeatherRightEdge else { return }
+        var style = styles.style(for: .weatherCity)
+        style.x = rightEdge
+        styles.setStyle(style, for: .weatherCity)
+        styles.save()
+        UserDefaults.standard.set(true, forKey: "didMigrateWeatherRightEdgeV2")
     }
 
     func resetStyles() {

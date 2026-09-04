@@ -213,25 +213,50 @@ final class DashboardView: NSView {
         let weatherLabel = model.weather.condition.displayName
         if !weatherLabel.isEmpty {
             let weatherStyle = model.styles.style(for: .weatherCity)
-            let cityPoint = CGPoint(
-                x: temperatureOrigin.x + PixelPainter.textWidth(model.weather.temperature, style: temperatureStyle) + 16,
-                y: temperatureOrigin.y + max((temperatureStyle.pointSize - weatherStyle.pointSize) * 0.45, 0)
-            )
-            drawText(weatherLabel, key: .weatherCity, at: cityPoint, context: context)
+            let cityY = temperatureOrigin.y + max((temperatureStyle.pointSize - weatherStyle.pointSize) * 0.45, 0)
+            let weatherWidth = PixelPainter.textWidth(weatherLabel, style: weatherStyle)
+            let weatherX: CGFloat
+            if model.usesWeatherRightEdge {
+                weatherX = weatherStyle.x - weatherWidth
+            } else {
+                // Start existing installations at a safe right edge just
+                // before the temperature, then keep the stored X absolute.
+                let safeRightEdge = temperatureOrigin.x - 16
+                weatherX = safeRightEdge - weatherWidth
+                model.migrateWeatherRightEdge(to: safeRightEdge)
+            }
+            let weatherY = cityY + weatherStyle.y - DashboardStyleKey.weatherCity.defaultPosition.y
+            PixelPainter.drawText(weatherLabel, at: CGPoint(x: weatherX, y: weatherY), style: weatherStyle, context: context)
         }
 
-        // Borderless two-line music broadcast.
+        // Borderless three-line music broadcast.
         let artist = model.music.artist.isEmpty ? "HERMES AGENT" : model.music.artist
         let title = model.music.title.isEmpty ? "TELEMETRY DREAMS" : model.music.title
-        drawText(artist, key: .artist, at: CGPoint(x: 42, y: 252), context: context)
+        drawMusicVisualizer(context: context)
+        drawText("NOW PLAYING", key: .musicStatus, at: DashboardStyleKey.musicStatus.defaultPosition, context: context)
         drawText(title, key: .title, at: CGPoint(x: 42, y: 287), context: context)
-        PixelPalette.cyanDim.setFill()
-        for index in 0..<6 {
-            let height = CGFloat(3 + ((phase + index * 2) % 7))
-            context.fill(CGRect(x: 45 + CGFloat(index * 9), y: 332 - height, width: 5, height: height))
-        }
+        drawText(artist, key: .artist, at: CGPoint(x: 42, y: 322), context: context)
 
         drawRuntimeStatus(context: context)
+    }
+
+    private func drawMusicVisualizer(context: CGContext) {
+        let style = model.styles.style(for: .musicVisualizer)
+        let heightScale = max(style.pointSize, 6)
+        let barWidth = max((heightScale * 0.28).rounded(), 2)
+        let gap = max((heightScale * 0.30).rounded(), 2)
+        let animationPhase = model.music.isPlaying ? phase : 0
+        style.color.setFill()
+        for index in 0..<6 {
+            let step = CGFloat(3 + ((animationPhase + index * 2) % 7)) / 9
+            let height = max((heightScale * step).rounded(), 3)
+            context.fill(CGRect(
+                x: style.x + CGFloat(index) * (barWidth + gap),
+                y: style.y + heightScale - height,
+                width: barWidth,
+                height: height
+            ))
+        }
     }
 
     private func drawRuntimeStatus(context: CGContext) {
@@ -438,7 +463,7 @@ final class DashboardView: NSView {
         case .files: return PixelPalette.orange
         case .search: return PixelPalette.cyanDim
         case .result: return PixelPalette.green
-        case .reply: return PixelPalette.cream
+        case .reply: return PixelPalette.green
         case .status: return PixelPalette.yellow
         case .approval: return NSColor(hex: "#B51F6D") ?? PixelPalette.violet
         case .error: return PixelPalette.red
