@@ -276,10 +276,14 @@ private final class ProcessRunner {
     static func run(executable: String, arguments: [String], timeout: TimeInterval = 4) -> String? {
         let process = Process()
         let output = Pipe()
+        let errors = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardOutput = output
-        process.standardError = Pipe()
+        process.standardError = errors
+
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
 
         do {
             try process.run()
@@ -287,16 +291,38 @@ private final class ProcessRunner {
             return nil
         }
 
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        // Drain both pipes while the child is running. Waiting for termination
+        // before reading can deadlock once sqlite3 (or another helper) fills the
+        // small OS pipe buffer.
+        let readers = DispatchGroup()
+        let dataLock = NSLock()
+        var outputData = Data()
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            dataLock.lock()
+            outputData = data
+            dataLock.unlock()
+            readers.leave()
         }
-        if process.isRunning {
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            _ = errors.fileHandleForReading.readDataToEndOfFile()
+            readers.leave()
+        }
+
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
             process.terminate()
+            _ = finished.wait(timeout: .now() + 1)
+        }
+        guard !process.isRunning,
+              readers.wait(timeout: .now() + 1) == .success,
+              process.terminationStatus == 0 else {
             return nil
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard process.terminationStatus == 0 else { return nil }
+        dataLock.lock()
+        let data = outputData
+        dataLock.unlock()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
@@ -995,6 +1021,8 @@ private struct CodexSnapshot {
 final class RuntimeStatusService {
     private let queue = DispatchQueue(label: "hermes-dashboard.runtime", qos: .utility)
     private let summaryQueue = DispatchQueue(label: "hermes-dashboard.summary", qos: .utility)
+    private let fetchLock = NSLock()
+    private var isFetching = false
     private let qwenSummaryService = LocalQwenSummaryService()
     private var completedSummaries: [String: LocalSummaryResult] = [:]
     private var pendingSummaries = Set<String>()
@@ -1009,9 +1037,19 @@ final class RuntimeStatusService {
     private let rolloutTimestampFormatter = ISO8601DateFormatter()
 
     func fetch(source: RuntimeSource, activityLayout: ActivitySummaryLayout, completion: @escaping (RuntimeStatus) -> Void) {
+        fetchLock.lock()
+        guard !isFetching else {
+            fetchLock.unlock()
+            return
+        }
+        isFetching = true
+        fetchLock.unlock()
         queue.async {
             var status = self.read(source: source) ?? RuntimeStatus.demo(source: source)
             status = self.summarizeFinalOutput(in: status, layout: activityLayout)
+            self.fetchLock.lock()
+            self.isFetching = false
+            self.fetchLock.unlock()
             DispatchQueue.main.async { completion(status) }
         }
     }
