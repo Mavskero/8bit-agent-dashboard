@@ -2094,7 +2094,7 @@ private struct HermesSnapshot {
     }
 }
 
-final class GIFAnimator {
+final class AnimatedImageAnimator {
     private(set) var frames: [CGImage] = []
     private(set) var durations: [Double] = []
     private var totalDuration: Double = 0
@@ -2109,8 +2109,11 @@ final class GIFAnimator {
             frames.append(image)
             let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
             let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
-            let unclamped = gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double
-            let clamped = gifProperties?[kCGImagePropertyGIFDelayTime] as? Double
+            let webPProperties = properties?["{WebP}" as CFString] as? [CFString: Any]
+            let unclamped = Self.number(gifProperties?[kCGImagePropertyGIFUnclampedDelayTime])
+                ?? Self.number(webPProperties?["UnclampedDelayTime" as CFString])
+            let clamped = Self.number(gifProperties?[kCGImagePropertyGIFDelayTime])
+                ?? Self.number(webPProperties?["DelayTime" as CFString])
             let duration = max(unclamped ?? clamped ?? 0.1, 0.04)
             durations.append(duration)
             totalDuration += duration
@@ -2127,5 +2130,11 @@ final class GIFAnimator {
             remaining -= duration
         }
         return frames.last
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let string = value as? String { return Double(string) }
+        return nil
     }
 }

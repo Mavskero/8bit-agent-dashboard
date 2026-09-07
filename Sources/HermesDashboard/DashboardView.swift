@@ -8,7 +8,7 @@ final class SettingsButton: NSButton {
 
 final class DashboardView: NSView {
     private let model: DashboardModel
-    private var wallpaper: GIFAnimator?
+    private var wallpaper: AnimatedImageAnimator?
     private var animationTimer: Timer?
     private var clockBlinkTimer: Timer?
     private var phase = 0
@@ -163,7 +163,7 @@ final class DashboardView: NSView {
             return
         }
         let url = URL(fileURLWithPath: path)
-        wallpaper = GIFAnimator(url: url)
+        wallpaper = AnimatedImageAnimator(url: url)
     }
 
     private func drawTopArea(context: CGContext) {
@@ -360,7 +360,8 @@ final class DashboardView: NSView {
         let agentTitle = model.runtimeSource == .codex ? "CODEX AGENT" : "HERMES AGENT"
         drawText(agentTitle, key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
         let currentState = model.runtime.agentState
-        if let agentImage = model.assetStore.agentImage(state: currentState, at: CACurrentMediaTime()) {
+        let animation = model.agentAnimation(at: CACurrentMediaTime())
+        if let agentImage = model.assetStore.agentImage(action: animation.action, state: currentState, elapsed: animation.elapsed) {
             PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 164), context: context)
         } else {
             PixelPainter.drawAvatar(at: CGPoint(x: agentOrigin.x + 42, y: agentOrigin.y + 56), scale: 3.0, state: currentState, phase: phase, context: context)

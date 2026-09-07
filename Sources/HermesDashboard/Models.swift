@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import QuartzCore
 import Security
 
 enum DashboardDisplayPreference {
@@ -724,6 +725,31 @@ enum AgentState: String {
     }
 }
 
+enum AgentAnimationAction: String {
+    case typing = "01-typing"
+    case doneOK = "02-done-ok"
+    case thinking = "03-thinking"
+    case music = "04-music"
+    case tired = "05-tired"
+    case coffee = "06-coffee"
+
+    var duration: TimeInterval {
+        switch self {
+        case .typing: return 1.32
+        case .doneOK: return 3.01
+        case .thinking: return 2.45
+        case .music: return 1.44
+        case .tired: return 2.78
+        case .coffee: return 8.54
+        }
+    }
+}
+
+struct AgentAnimationPresentation {
+    var action: AgentAnimationAction
+    var elapsed: TimeInterval
+}
+
 enum WeatherCondition {
     case clear
     case partlyCloudy
@@ -1033,6 +1059,9 @@ final class DashboardModel: NSObject {
     private var completedActivityIDs = Set<String>()
     private var activityPauseTicks = 0
     private var weatherCredentialLoadID: UUID?
+    private var agentAnimationAction: AgentAnimationAction = .typing
+    private var agentAnimationStartedAt = CACurrentMediaTime()
+    private var observedAgentState: AgentState?
 
     override init() {
         var storedSource = UserDefaults.standard.string(forKey: Keys.runtimeSource)
@@ -1224,7 +1253,9 @@ final class DashboardModel: NSObject {
     private func refreshMusic() {
         musicService.fetch { [weak self] snapshot in
             guard let self else { return }
-            self.music = snapshot.preservingTrack(from: self.music)
+            let previous = self.music
+            self.music = snapshot.preservingTrack(from: previous)
+            self.handleMusicAnimationChange(from: previous, to: self.music, at: CACurrentMediaTime())
             self.notifyChange()
         }
     }
@@ -1241,11 +1272,84 @@ final class DashboardModel: NSObject {
             guard let self else { return }
             guard source == self.runtimeSource else { return }
             self.runtime = status.preservingTransientData(from: self.runtime)
+            self.handleAgentStateChange(to: self.runtime.agentState, at: CACurrentMediaTime())
             self.updateTodayTokensTarget(self.runtime.todayTokens, hasData: self.runtime.hasTodayTokenData)
             self.updateActivityTarget(self.runtime.activityLog, source: source)
             self.applyPlanUsageToRuntime()
             self.notifyChange()
         }
+    }
+
+    func agentAnimation(at time: TimeInterval) -> AgentAnimationPresentation {
+        advanceAgentAnimationIfNeeded(at: time)
+        return AgentAnimationPresentation(
+            action: agentAnimationAction,
+            elapsed: max(time - agentAnimationStartedAt, 0)
+        )
+    }
+
+    private var agentHasActiveTask: Bool {
+        switch runtime.agentState {
+        case .working, .thinking, .outputting, .error: return true
+        case .done, .idle: return false
+        }
+    }
+
+    private func handleAgentStateChange(to state: AgentState, at time: TimeInterval) {
+        let previous = observedAgentState
+        observedAgentState = state
+
+        switch state {
+        case .working, .outputting:
+            setAgentAnimation(.typing, at: time)
+        case .thinking:
+            setAgentAnimation(.thinking, at: time)
+        case .error:
+            setAgentAnimation(.tired, at: time)
+        case .done, .idle:
+            if let previous, [.working, .thinking, .outputting].contains(previous) {
+                setAgentAnimation(.doneOK, at: time, restart: true)
+            } else if previous == .error {
+                chooseIdleAgentAnimation(at: time)
+            } else if previous == nil {
+                setAgentAnimation(.typing, at: time)
+            }
+        }
+    }
+
+    private func handleMusicAnimationChange(from previous: MusicSnapshot, to current: MusicSnapshot, at time: TimeInterval) {
+        guard !agentHasActiveTask else { return }
+        if !previous.isPlaying && current.isPlaying {
+            // Opening a player or explicitly resuming playback starts one
+            // listening cycle. A title change while already playing does not.
+            setAgentAnimation(.music, at: time, restart: true)
+        } else if !current.isPlaying && agentAnimationAction == .music {
+            chooseIdleAgentAnimation(at: time, allowMusic: false)
+        }
+    }
+
+    private func advanceAgentAnimationIfNeeded(at time: TimeInterval) {
+        guard !agentHasActiveTask else { return }
+        let elapsed = time - agentAnimationStartedAt
+        guard elapsed >= agentAnimationAction.duration else { return }
+        chooseIdleAgentAnimation(at: time)
+    }
+
+    private func chooseIdleAgentAnimation(at time: TimeInterval, allowMusic: Bool = true) {
+        if allowMusic && music.isPlaying {
+            let action: AgentAnimationAction = Int.random(in: 0..<5) == 0 ? .music : .typing
+            setAgentAnimation(action, at: time, restart: true)
+        } else if Int.random(in: 0..<6) == 0 {
+            setAgentAnimation(.coffee, at: time, restart: true)
+        } else {
+            setAgentAnimation(.typing, at: time, restart: true)
+        }
+    }
+
+    private func setAgentAnimation(_ action: AgentAnimationAction, at time: TimeInterval, restart: Bool = false) {
+        guard restart || agentAnimationAction != action else { return }
+        agentAnimationAction = action
+        agentAnimationStartedAt = time
     }
 
     private func scheduleActivityStreamTimer() {
@@ -1433,7 +1537,7 @@ final class DashboardModel: NSObject {
 final class DashboardAssetStore {
     let folderURL: URL?
     private var staticCache: [String: CGImage] = [:]
-    private var gifCache: [String: GIFAnimator] = [:]
+    private var animatedCache: [String: AnimatedImageAnimator] = [:]
 
     init(folderURL: URL?) {
         self.folderURL = folderURL
@@ -1464,35 +1568,48 @@ final class DashboardAssetStore {
         return image(names: names, subfolders: bundledFolders + ["weather", "icons"], at: time)
     }
 
-    func agentImage(state: AgentState, at time: TimeInterval) -> CGImage? {
-        var names = [
-            "hermes-\(state.rawValue)",
-            "agent-\(state.rawValue)"
-        ]
-        if state == .outputting {
-            names.append(contentsOf: ["hermes-working", "agent-working"])
+    func agentImage(action: AgentAnimationAction, state: AgentState, elapsed: TimeInterval) -> CGImage? {
+        if let image = image(
+            names: [action.rawValue],
+            subfolders: ["AgentAnimations", "agent"],
+            at: elapsed
+        ) {
+            return image
         }
-        names.append(contentsOf: ["hermes", "agent"])
-        return image(names: names, subfolders: ["hermes", "agent", "icons"], at: time)
+
+        var legacyNames = ["hermes-\(state.rawValue)", "agent-\(state.rawValue)"]
+        if state == .outputting {
+            legacyNames.append(contentsOf: ["hermes-working", "agent-working"])
+        }
+        legacyNames.append(contentsOf: ["hermes", "agent"])
+        return image(names: legacyNames, subfolders: ["hermes", "agent", "icons"], at: elapsed)
     }
 
     private func image(names: [String], subfolders: [String], at time: TimeInterval) -> CGImage? {
-        guard let folderURL else { return nil }
+        var roots: [URL] = []
+        if let folderURL { roots.append(folderURL) }
+        if let bundled = Bundle.main.resourceURL,
+           !roots.contains(where: { $0.standardizedFileURL == bundled.standardizedFileURL }) {
+            roots.append(bundled)
+        }
+        guard !roots.isEmpty else { return nil }
         for name in names {
-            for folder in [folderURL] + subfolders.map({ folderURL.appendingPathComponent($0, isDirectory: true) }) {
-                for ext in ["gif", "png", "jpg", "jpeg"] {
-                    let url = folder.appendingPathComponent("\(name).\(ext)")
-                    guard FileManager.default.fileExists(atPath: url.path) else { continue }
-                    if ext == "gif" {
-                        if gifCache[url.path] == nil {
-                            gifCache[url.path] = GIFAnimator(url: url)
+            for root in roots {
+                for folder in [root] + subfolders.map({ root.appendingPathComponent($0, isDirectory: true) }) {
+                    for ext in ["webp", "gif", "png", "jpg", "jpeg"] {
+                        let url = folder.appendingPathComponent("\(name).\(ext)")
+                        guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                        if ext == "gif" || ext == "webp" {
+                            if animatedCache[url.path] == nil {
+                                animatedCache[url.path] = AnimatedImageAnimator(url: url)
+                            }
+                            if let frame = animatedCache[url.path]?.frame(at: time) { return frame }
+                        } else {
+                            if staticCache[url.path] == nil {
+                                staticCache[url.path] = Self.loadImage(at: url)
+                            }
+                            if let image = staticCache[url.path] { return image }
                         }
-                        if let frame = gifCache[url.path]?.frame(at: time) { return frame }
-                    } else {
-                        if staticCache[url.path] == nil {
-                            staticCache[url.path] = Self.loadImage(at: url)
-                        }
-                        if let image = staticCache[url.path] { return image }
                     }
                 }
             }
