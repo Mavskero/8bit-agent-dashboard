@@ -507,6 +507,10 @@ struct PixelPainter {
 
     static func drawAsset(_ image: CGImage, in rect: CGRect, interpolation: CGInterpolationQuality = .none, context: CGContext) {
         context.saveGState()
+        if interpolation != .none {
+            context.setAllowsAntialiasing(true)
+            context.setShouldAntialias(true)
+        }
         context.translateBy(x: rect.minX, y: rect.maxY)
         context.scaleBy(x: 1, y: -1)
         context.interpolationQuality = interpolation

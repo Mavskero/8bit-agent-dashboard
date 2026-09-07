@@ -35,6 +35,8 @@ open build/HermesDashboard.app
 
 点击 `Layout / Opacity…` 可以修改整个画布的上下左右 padding、Runtime Status / Hermes Agent / Active Session 三个模块的 X/Y 坐标、Agent 小人的相对 X/Y/Size，以及三个模块背景透明度。修改会立即生效并保存到下次启动。
 
+Agent 在无任务且没有音乐播放时，每轮闲置动作以 10% 概率进入品茶，其余时间使用待机打字；品茶的闭眼停留段约 1 秒。人物素材以高质量透明插值缩放，在非整数显示尺寸下平滑融合边缘。
+
 ## 可替换天气与 Agent 图标
 
 应用默认使用 `Resources/WeatherAssets/Static` 中的 1254×1254 透明 PNG 天气图标，并按晴天、夜晚、多云、阴天、雾、毛毛雨、雨、雪和雷暴状态自动切换。构建脚本会把整套资源复制到 App Bundle。`Weather Settings…` 中可以独立设置天气图标的画布 X/Y 坐标和显示尺寸。

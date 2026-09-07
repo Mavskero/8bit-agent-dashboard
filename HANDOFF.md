@@ -40,10 +40,10 @@ killall HermesDashboard 2>/dev/null || true
 - `S`、`Cmd+,` 或 Runtime Status 右侧齿轮打开设置；`Esc` 或 `Cmd+Q` 退出。
 - 鼠标启动时可见，10 秒无活动后隐藏，再次活动立即显示。
 - 内置 Silkscreen-Regular / Silkscreen-Bold 像素字体，可在设置中切换字体、字号、颜色和每类文字的 X/Y 坐标。
-- Runtime Status、Hermes Agent、Active Session 支持模块位置、画布 padding 和背景透明度调整。
+- Runtime Status、Hermes Agent、Active Session 支持模块位置、画布 padding 和背景透明度调整；Agent 小人另有相对 X/Y 和 48–320px Size 设置。
 - Session 子卡片有独立的 `SESSION CARDS` 透明度设置。
 - 上下画布当前为 9:7 比例：上区 405px、下区 315px。
-- Hermes Agent 只显示一个最大像素小人，根据 working/thinking/done/idle/error 状态切换。
+- Hermes Agent 只显示一个最大像素小人，根据 working/thinking/done/idle/error 状态切换。人物使用高质量透明插值融入背景；无任务且无音乐时每轮 10% 概率品茶，品茶停留约 1 秒，完整动作约 3.14 秒。
 - Active Session 布局为：最新 session 与标题位于同一个高亮内框；其余四个 session 在下方两行、每行两列。
 - Session 卡片显示标题、状态灯、上下文分段方块和右端百分比；最新 session 使用更高饱和度背景，明显区别于四个历史 session。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。
@@ -133,7 +133,7 @@ Codex 来源由 `RuntimeStatusService` 读取：
 ## 偏好设置与兼容性
 
 - `dashboardStyles`：文字样式 JSON。
-- `dashboardLayout`：padding、模块坐标、模块透明度和 `sessionCardOpacity`。
+- `dashboardLayout`：padding、模块坐标、模块透明度、Agent 小人相对 X/Y/Size 和 `sessionCardOpacity`。
 - `preferredDisplayID`：默认显示器。
 - `runtimeSource`：Codex 或 Hermes。
 - `wallpaperPath` / `assetFolderPath`：壁纸和资源目录。

@@ -371,6 +371,7 @@ final class DashboardView: NSView {
                     width: characterSize,
                     height: characterSize
                 ),
+                interpolation: .high,
                 context: context
             )
         } else {

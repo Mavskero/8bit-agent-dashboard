@@ -757,7 +757,7 @@ enum AgentAnimationAction: String {
         case .thinking: return 2.45
         case .music: return 1.44
         case .tired: return 2.78
-        case .coffee: return 8.54
+        case .coffee: return 3.14
         }
     }
 }
@@ -1356,7 +1356,7 @@ final class DashboardModel: NSObject {
         if allowMusic && music.isPlaying {
             let action: AgentAnimationAction = Int.random(in: 0..<5) == 0 ? .music : .typing
             setAgentAnimation(action, at: time, restart: true)
-        } else if Int.random(in: 0..<6) == 0 {
+        } else if Int.random(in: 0..<10) == 0 {
             setAgentAnimation(.coffee, at: time, restart: true)
         } else {
             setAgentAnimation(.typing, at: time, restart: true)
