@@ -1117,6 +1117,9 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         static let runtimeY = 11
         static let agentX = 20
         static let agentY = 21
+        static let agentCharacterX = 22
+        static let agentCharacterY = 23
+        static let agentCharacterSize = 24
         static let sessionX = 30
         static let sessionY = 31
         static let runtimeOpacity = 40
@@ -1135,7 +1138,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
     init(model: DashboardModel, parentWindow: NSWindow?) {
         self.model = model
         self.parentWindow = parentWindow
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 560), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Dashboard Layout & Opacity"
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
@@ -1178,35 +1181,36 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         let title = NSTextField(labelWithString: "LAYOUT / MODULE OPACITY")
         title.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
         title.textColor = NSColor(calibratedRed: 0.04, green: 0.31, blue: 0.38, alpha: 1)
-        title.frame = NSRect(x: 28, y: 460, width: 520, height: 26)
+        title.frame = NSRect(x: 28, y: 520, width: 520, height: 26)
         content.addSubview(title)
 
-        addLabel("CANVAS PADDING", x: 28, y: 422, width: 220, to: content)
-        addField(tag: FieldTag.padding, value: model.layout.padding, x: 270, y: 418, to: content)
-        addPositionRow("RUNTIME STATUS", position: model.layout.runtimeStatus, xTag: FieldTag.runtimeX, yTag: FieldTag.runtimeY, y: 378, to: content)
-        addPositionRow("HERMES AGENT", position: model.layout.hermesAgent, xTag: FieldTag.agentX, yTag: FieldTag.agentY, y: 338, to: content)
-        addPositionRow("ACTIVE SESSION", position: model.layout.activeSession, xTag: FieldTag.sessionX, yTag: FieldTag.sessionY, y: 298, to: content)
+        addLabel("CANVAS PADDING", x: 28, y: 482, width: 220, to: content)
+        addField(tag: FieldTag.padding, value: model.layout.padding, x: 270, y: 478, to: content)
+        addPositionRow("RUNTIME STATUS", position: model.layout.runtimeStatus, xTag: FieldTag.runtimeX, yTag: FieldTag.runtimeY, y: 438, to: content)
+        addPositionRow("HERMES AGENT", position: model.layout.hermesAgent, xTag: FieldTag.agentX, yTag: FieldTag.agentY, y: 398, to: content)
+        addCharacterRow(y: 358, to: content)
+        addPositionRow("ACTIVE SESSION", position: model.layout.activeSession, xTag: FieldTag.sessionX, yTag: FieldTag.sessionY, y: 318, to: content)
 
-        addLabel("MODULE BACKGROUND OPACITY (0.0 - 1.0)", x: 28, y: 258, width: 360, to: content)
-        addLabel("RUNTIME", x: 28, y: 218, width: 100, to: content)
-        addField(tag: FieldTag.runtimeOpacity, value: model.layout.runtimeOpacity, x: 130, y: 214, to: content)
-        addLabel("AGENT", x: 220, y: 218, width: 80, to: content)
-        addField(tag: FieldTag.agentOpacity, value: model.layout.agentOpacity, x: 300, y: 214, to: content)
-        addLabel("SESSION", x: 390, y: 218, width: 90, to: content)
-        addField(tag: FieldTag.sessionOpacity, value: model.layout.activeSessionOpacity, x: 480, y: 214, to: content)
-        addLabel("SESSION CARDS", x: 28, y: 178, width: 120, to: content)
-        addField(tag: FieldTag.sessionCardOpacity, value: model.layout.sessionCardOpacity, x: 160, y: 174, to: content)
+        addLabel("MODULE BACKGROUND OPACITY (0.0 - 1.0)", x: 28, y: 278, width: 360, to: content)
+        addLabel("RUNTIME", x: 28, y: 238, width: 100, to: content)
+        addField(tag: FieldTag.runtimeOpacity, value: model.layout.runtimeOpacity, x: 130, y: 234, to: content)
+        addLabel("AGENT", x: 220, y: 238, width: 80, to: content)
+        addField(tag: FieldTag.agentOpacity, value: model.layout.agentOpacity, x: 300, y: 234, to: content)
+        addLabel("SESSION", x: 390, y: 238, width: 90, to: content)
+        addField(tag: FieldTag.sessionOpacity, value: model.layout.activeSessionOpacity, x: 480, y: 234, to: content)
+        addLabel("SESSION CARDS", x: 28, y: 198, width: 120, to: content)
+        addField(tag: FieldTag.sessionCardOpacity, value: model.layout.sessionCardOpacity, x: 160, y: 194, to: content)
 
-        addLabel("TITLE / CONTENT GAP", x: 28, y: 138, width: 220, to: content)
-        addField(tag: FieldTag.runtimeTitleSpacing, value: model.layout.runtimeTitleSpacing, x: 270, y: 134, to: content)
-        addLabel("ICON / TITLE GAP", x: 28, y: 98, width: 220, to: content)
-        addField(tag: FieldTag.runtimeIconTitleSpacing, value: model.layout.runtimeIconTitleSpacing, x: 270, y: 94, to: content)
+        addLabel("TITLE / CONTENT GAP", x: 28, y: 158, width: 220, to: content)
+        addField(tag: FieldTag.runtimeTitleSpacing, value: model.layout.runtimeTitleSpacing, x: 270, y: 154, to: content)
+        addLabel("ICON / TITLE GAP", x: 28, y: 118, width: 220, to: content)
+        addField(tag: FieldTag.runtimeIconTitleSpacing, value: model.layout.runtimeIconTitleSpacing, x: 270, y: 114, to: content)
         let iconButton = NSButton(title: "Runtime Icons…", target: self, action: #selector(showRuntimeIcons(_:)))
         iconButton.bezelStyle = .rounded
-        iconButton.frame = NSRect(x: 370, y: 132, width: 130, height: 28)
+        iconButton.frame = NSRect(x: 370, y: 152, width: 130, height: 28)
         content.addSubview(iconButton)
 
-        let note = NSTextField(wrappingLabelWithString: "X / Y values are design-canvas coordinates. Changes apply immediately and are saved for the next launch.")
+        let note = NSTextField(wrappingLabelWithString: "Module X / Y values are design-canvas coordinates. Character X / Y are relative to the Agent panel; Size is 48–320 px. Changes apply immediately and are saved.")
         note.font = NSFont.systemFont(ofSize: 11)
         note.textColor = NSColor.secondaryLabelColor
         note.frame = NSRect(x: 28, y: 48, width: 520, height: 40)
@@ -1227,6 +1231,16 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         addField(tag: xTag, value: position.x, x: 272, y: y, to: view)
         addLabel("Y", x: 360, y: y + 4, width: 18, to: view)
         addField(tag: yTag, value: position.y, x: 382, y: y, to: view)
+    }
+
+    private func addCharacterRow(y: CGFloat, to view: NSView) {
+        addLabel("AGENT CHARACTER", x: 28, y: y + 4, width: 160, to: view)
+        addLabel("X", x: 190, y: y + 4, width: 18, to: view)
+        addField(tag: FieldTag.agentCharacterX, value: model.layout.agentCharacterX, x: 212, y: y, to: view)
+        addLabel("Y", x: 300, y: y + 4, width: 18, to: view)
+        addField(tag: FieldTag.agentCharacterY, value: model.layout.agentCharacterY, x: 322, y: y, to: view)
+        addLabel("SIZE", x: 410, y: y + 4, width: 40, to: view)
+        addField(tag: FieldTag.agentCharacterSize, value: model.layout.agentCharacterSize, x: 458, y: y, to: view)
     }
 
     private func addField(tag: Int, value: CGFloat, x: CGFloat, y: CGFloat, to view: NSView) {
@@ -1252,6 +1266,9 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
             FieldTag.runtimeY: model.layout.runtimeStatus.y,
             FieldTag.agentX: model.layout.hermesAgent.x,
             FieldTag.agentY: model.layout.hermesAgent.y,
+            FieldTag.agentCharacterX: model.layout.agentCharacterX,
+            FieldTag.agentCharacterY: model.layout.agentCharacterY,
+            FieldTag.agentCharacterSize: model.layout.agentCharacterSize,
             FieldTag.sessionX: model.layout.activeSession.x,
             FieldTag.sessionY: model.layout.activeSession.y,
             FieldTag.runtimeOpacity: model.layout.runtimeOpacity,
@@ -1270,6 +1287,9 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         layout.padding = min(max(value(FieldTag.padding), 0), 120)
         layout.runtimeStatus = DashboardModulePosition(x: value(FieldTag.runtimeX), y: value(FieldTag.runtimeY))
         layout.hermesAgent = DashboardModulePosition(x: value(FieldTag.agentX), y: value(FieldTag.agentY))
+        layout.agentCharacterX = min(max(value(FieldTag.agentCharacterX), -320), 584)
+        layout.agentCharacterY = min(max(value(FieldTag.agentCharacterY), -320), 284)
+        layout.agentCharacterSize = min(max(value(FieldTag.agentCharacterSize), 48), 320)
         layout.activeSession = DashboardModulePosition(x: value(FieldTag.sessionX), y: value(FieldTag.sessionY))
         layout.runtimeOpacity = min(max(value(FieldTag.runtimeOpacity), 0), 1)
         layout.agentOpacity = min(max(value(FieldTag.agentOpacity), 0), 1)

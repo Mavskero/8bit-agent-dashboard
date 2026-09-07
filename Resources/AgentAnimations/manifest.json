@@ -6,18 +6,40 @@
       512,
       512
     ],
-    "frames": 6,
+    "frames": 3,
     "durations_ms": [
-      350,
-      160,
-      100,
-      140,
-      120,
-      450
+      510,
+      240,
+      570
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 529182
+    "bytes": 107434,
+    "stabilization": "Fixed body/laptop across all frames; blink uses an aligned eye-region patch.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        798,
+        804,
+        798
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    },
+    "notes": "身体与电脑逐像素固定，仅眼睛眨动；睁眼与闭眼时长为 1080ms:240ms（4.5:1）。"
   },
   {
     "file": "02-done-ok.webp",
@@ -51,7 +73,111 @@
     "loop": 0,
     "alpha": true,
     "notes": "首帧复用打字首帧；细化抬手、转腕、OK，最高点星光闪耀，再收手。",
-    "bytes": 1217916
+    "bytes": 1210548,
+    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        1,
+        3
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        798,
+        58,
+        58,
+        59,
+        59,
+        81,
+        68,
+        72,
+        72,
+        72,
+        72,
+        72,
+        73,
+        68,
+        81,
+        59,
+        59,
+        58,
+        58
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    }
   },
   {
     "file": "03-thinking.webp",
@@ -71,7 +197,46 @@
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 510720
+    "bytes": 510048,
+    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        -1,
+        1
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        563,
+        590,
+        572,
+        692,
+        573,
+        561
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    }
   },
   {
     "file": "04-music.webp",
@@ -91,7 +256,46 @@
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 404062
+    "bytes": 405922,
+    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        -1
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        654,
+        632,
+        701,
+        700,
+        523,
+        609
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    }
   },
   {
     "file": "05-tired.webp",
@@ -111,7 +315,46 @@
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 595168
+    "bytes": 595970,
+    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        471,
+        447,
+        433,
+        576,
+        608,
+        579
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    }
   },
   {
     "file": "06-coffee.webp",
@@ -148,6 +391,125 @@
     "loop": 0,
     "alpha": true,
     "notes": "闭眼停留6.4秒，人物杯子电脑逐像素固定，仅香气左右飘动。",
-    "bytes": 780182
+    "bytes": 746586,
+    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "hard 0/255",
+      "changed_outer_pixels_per_frame": [
+        0,
+        0,
+        0,
+        31,
+        48,
+        35,
+        24,
+        38,
+        55,
+        15,
+        24,
+        33,
+        48,
+        39,
+        48,
+        33,
+        24,
+        15,
+        55,
+        10,
+        13,
+        0
+      ],
+      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+    }
   }
 ]

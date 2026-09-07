@@ -33,7 +33,7 @@ open build/HermesDashboard.app
 
 修改后即时生效并保存到应用偏好设置；`Reset Text Styles` 恢复预览图默认样式。
 
-点击 `Layout / Opacity…` 可以修改整个画布的上下左右 padding、Runtime Status / Hermes Agent / Active Session 三个模块的 X/Y 坐标，以及三个模块背景透明度。修改会立即生效并保存到下次启动。
+点击 `Layout / Opacity…` 可以修改整个画布的上下左右 padding、Runtime Status / Hermes Agent / Active Session 三个模块的 X/Y 坐标、Agent 小人的相对 X/Y/Size，以及三个模块背景透明度。修改会立即生效并保存到下次启动。
 
 ## 可替换天气与 Agent 图标
 

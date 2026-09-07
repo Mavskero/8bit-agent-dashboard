@@ -362,7 +362,17 @@ final class DashboardView: NSView {
         let currentState = model.runtime.agentState
         let animation = model.agentAnimation(at: CACurrentMediaTime())
         if let agentImage = model.assetStore.agentImage(action: animation.action, state: currentState, elapsed: animation.elapsed) {
-            PixelPainter.drawAsset(agentImage, in: CGRect(x: agentOrigin.x + 26, y: agentOrigin.y + 56, width: 188, height: 164), context: context)
+            let characterSize = model.layout.agentCharacterSize
+            PixelPainter.drawAsset(
+                agentImage,
+                in: CGRect(
+                    x: agentOrigin.x + model.layout.agentCharacterX,
+                    y: agentOrigin.y + model.layout.agentCharacterY,
+                    width: characterSize,
+                    height: characterSize
+                ),
+                context: context
+            )
         } else {
             PixelPainter.drawAvatar(at: CGPoint(x: agentOrigin.x + 42, y: agentOrigin.y + 56), scale: 3.0, state: currentState, phase: phase, context: context)
         }

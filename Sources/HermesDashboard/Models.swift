@@ -306,6 +306,10 @@ struct DashboardLayout: Codable, Equatable {
     var padding: CGFloat
     var runtimeStatus: DashboardModulePosition
     var hermesAgent: DashboardModulePosition
+    /// Character artwork coordinates are relative to the Hermes/Codex Agent module.
+    var agentCharacterX: CGFloat
+    var agentCharacterY: CGFloat
+    var agentCharacterSize: CGFloat
     var activeSession: DashboardModulePosition
     var runtimeOpacity: CGFloat
     var agentOpacity: CGFloat
@@ -319,6 +323,7 @@ struct DashboardLayout: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case padding, runtimeStatus, hermesAgent, activeSession
+        case agentCharacterX, agentCharacterY, agentCharacterSize
         case runtimeOpacity, agentOpacity, activeSessionOpacity, sessionCardOpacity
         case runtimeTitleSpacing, runtimeIconTitleSpacing, runtimeIcons, runtimeValueColors
     }
@@ -327,6 +332,9 @@ struct DashboardLayout: Codable, Equatable {
         padding: CGFloat,
         runtimeStatus: DashboardModulePosition,
         hermesAgent: DashboardModulePosition,
+        agentCharacterX: CGFloat = 26,
+        agentCharacterY: CGFloat = 56,
+        agentCharacterSize: CGFloat = 188,
         activeSession: DashboardModulePosition,
         runtimeOpacity: CGFloat,
         agentOpacity: CGFloat,
@@ -340,6 +348,9 @@ struct DashboardLayout: Codable, Equatable {
         self.padding = padding
         self.runtimeStatus = runtimeStatus
         self.hermesAgent = hermesAgent
+        self.agentCharacterX = agentCharacterX
+        self.agentCharacterY = agentCharacterY
+        self.agentCharacterSize = agentCharacterSize
         self.activeSession = activeSession
         self.runtimeOpacity = runtimeOpacity
         self.agentOpacity = agentOpacity
@@ -356,6 +367,9 @@ struct DashboardLayout: Codable, Equatable {
         padding = try container.decode(CGFloat.self, forKey: .padding)
         runtimeStatus = try container.decode(DashboardModulePosition.self, forKey: .runtimeStatus)
         hermesAgent = try container.decode(DashboardModulePosition.self, forKey: .hermesAgent)
+        agentCharacterX = try container.decodeIfPresent(CGFloat.self, forKey: .agentCharacterX) ?? 26
+        agentCharacterY = try container.decodeIfPresent(CGFloat.self, forKey: .agentCharacterY) ?? 56
+        agentCharacterSize = try container.decodeIfPresent(CGFloat.self, forKey: .agentCharacterSize) ?? 188
         activeSession = try container.decode(DashboardModulePosition.self, forKey: .activeSession)
         runtimeOpacity = try container.decode(CGFloat.self, forKey: .runtimeOpacity)
         agentOpacity = try container.decode(CGFloat.self, forKey: .agentOpacity)
@@ -384,6 +398,9 @@ struct DashboardLayout: Codable, Equatable {
         padding: 12,
         runtimeStatus: DashboardModulePosition(x: 770, y: 20),
         hermesAgent: DashboardModulePosition(x: 16, y: 416),
+        agentCharacterX: 26,
+        agentCharacterY: 56,
+        agentCharacterSize: 188,
         activeSession: DashboardModulePosition(x: 618, y: 416),
         runtimeOpacity: 0.2,
         agentOpacity: 0.2,
