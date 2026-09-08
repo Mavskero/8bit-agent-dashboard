@@ -749,15 +749,17 @@ enum AgentAnimationAction: String {
     case music = "04-music"
     case tired = "05-tired"
     case coffee = "06-coffee"
+    case idle = "07-idle"
 
     var duration: TimeInterval {
         switch self {
-        case .typing: return 1.50
+        case .typing: return 2.85
         case .doneOK: return 3.01
         case .thinking: return 3.35
         case .music: return 1.44
         case .tired: return 2.78
         case .coffee: return 3.14
+        case .idle: return 5.10
         }
     }
 }
@@ -1076,7 +1078,7 @@ final class DashboardModel: NSObject {
     private var completedActivityIDs = Set<String>()
     private var activityPauseTicks = 0
     private var weatherCredentialLoadID: UUID?
-    private var agentAnimationAction: AgentAnimationAction = .typing
+    private var agentAnimationAction: AgentAnimationAction = .idle
     private var agentAnimationStartedAt = CACurrentMediaTime()
     private var observedAgentState: AgentState?
 
@@ -1103,7 +1105,7 @@ final class DashboardModel: NSObject {
         planUsageSettings = PlanUsageSettings.load()
         planUsage = PlanUsageSnapshot.cached(from: planUsageSettings)
         weatherSettings = WeatherSettings.load()
-        assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)) ?? Bundle.main.resourceURL)
+        assetStore = DashboardAssetStore(folderURL: assetFolderPath.map(URL.init(fileURLWithPath:)))
         super.init()
     }
 
@@ -1151,7 +1153,7 @@ final class DashboardModel: NSObject {
         } else {
             UserDefaults.standard.removeObject(forKey: Keys.assetFolderPath)
         }
-        assetStore = DashboardAssetStore(folderURL: url ?? Bundle.main.resourceURL)
+        assetStore = DashboardAssetStore(folderURL: url)
         notifyChange()
     }
 
@@ -1329,7 +1331,7 @@ final class DashboardModel: NSObject {
             } else if previous == .error {
                 chooseIdleAgentAnimation(at: time)
             } else if previous == nil {
-                setAgentAnimation(.typing, at: time)
+                setAgentAnimation(.idle, at: time)
             }
         }
     }
@@ -1354,12 +1356,12 @@ final class DashboardModel: NSObject {
 
     private func chooseIdleAgentAnimation(at time: TimeInterval, allowMusic: Bool = true) {
         if allowMusic && music.isPlaying {
-            let action: AgentAnimationAction = Int.random(in: 0..<5) == 0 ? .music : .typing
+            let action: AgentAnimationAction = Int.random(in: 0..<5) == 0 ? .music : .idle
             setAgentAnimation(action, at: time, restart: true)
         } else if Int.random(in: 0..<10) == 0 {
             setAgentAnimation(.coffee, at: time, restart: true)
         } else {
-            setAgentAnimation(.typing, at: time, restart: true)
+            setAgentAnimation(.idle, at: time, restart: true)
         }
     }
 

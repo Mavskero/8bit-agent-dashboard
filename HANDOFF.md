@@ -43,7 +43,7 @@ killall HermesDashboard 2>/dev/null || true
 - Runtime Status、Hermes Agent、Active Session 支持模块位置、画布 padding 和背景透明度调整；Agent 小人另有相对 X/Y 和 48–320px Size 设置。
 - Session 子卡片有独立的 `SESSION CARDS` 透明度设置。
 - 上下画布当前为 9:7 比例：上区 405px、下区 315px。
-- Agent 模块标题固定为 `AGENT`，只显示一个最大像素小人，根据 working/thinking/done/idle/error 状态切换。人物使用高质量透明插值融入背景；无任务且无音乐时每轮 10% 概率品茶，品茶停留约 1 秒，完整动作约 3.14 秒。打字包含双手手指敲击且六帧仅一帧眨眼；思考保持视线朝向电脑并依次显示气泡和发光灯泡。打字、思考与完成首尾共享同一躯干/电脑基准帧。
+- Agent 模块标题固定为 `AGENT`，只显示一个最大像素小人，根据 working/thinking/done/idle/error 状态切换。人物使用高质量透明插值融入背景；无任务且无音乐时每轮 10% 概率品茶，其余时间双手静止。`WORKING` 与 `THINKING` 都有左右手交替敲击，思考状态同时显示气泡和发光灯泡。打字周期为 12 帧，仅一个 100ms 眨眼帧；全部动作以同一四瓣笔记本标志为锚点并锁定同一盖板轮廓。
 - Active Session 布局为：最新 session 与标题位于同一个高亮内框；其余四个 session 在下方两行、每行两列。
 - Session 卡片显示标题、状态灯、上下文分段方块和右端百分比；最新 session 使用更高饱和度背景，明显区别于四个历史 session。
 - 时间冒号每秒闪烁，但小时、冒号、分钟使用固定几何锚点，分钟不会位移。

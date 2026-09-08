@@ -6,20 +6,50 @@
       512,
       512
     ],
-    "frames": 6,
+    "frames": 12,
     "durations_ms": [
       250,
       250,
       250,
       250,
       250,
+      250,
+      250,
+      250,
+      100,
+      250,
+      250,
       250
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 270626,
-    "stabilization": "All frames reuse one canonical head/neck/torso/laptop; only hand patches and the sole blink patch change.",
+    "bytes": 326030,
+    "stabilization": "All 12 frames reuse one canonical head, neck, torso and laptop; only localized finger presses and the sole blink patch change.",
     "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
       [
         0,
         0
@@ -47,12 +77,12 @@
     ],
     "edge_cleanup": {
       "alpha": "transparent with high-quality resampled edge transition",
-      "rule": "Magenta spill removed; production rendering also uses high-quality alpha interpolation."
+      "rule": "Character and laptop remain on the canonical alpha layer; edits are restricted to hands and eyes."
     },
-    "notes": "六帧循环中仅第 4 帧闭眼，按帧数和时长均占 16.7%；双手手指交替敲击键盘。",
-    "generation_source": "Built-in imagegen six-frame typing sheet; magenta keying, spill cleanup, anchor mapping and patch-only compositing.",
+    "notes": "12 帧打字循环，左右手指交替下压键盘；仅第 9 帧闭眼且只停留 100ms。眨眼占帧数 8.3%，占 2.85 秒周期时长约 3.5%。",
+    "generation_source": "Built-in imagegen typing-pose study plus canonical-body, localized finger-press and single-blink compositing.",
     "frame_directory": "Frames/01-typing",
-    "frame_bytes": 1014848,
+    "frame_bytes": 2024166,
     "runtime_format": "complete transparent PNG frames",
     "runtime_source": "complete PNG frames"
   },
@@ -87,9 +117,9 @@
     ],
     "loop": 0,
     "alpha": true,
-    "notes": "首尾帧复用打字/思考的统一基准人物；中段抬手、转腕、OK 和指尖星光保持原动作。",
-    "bytes": 1210548,
-    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "notes": "首尾帧回到统一基准人物；中段保留抬手、转腕、OK 和指尖星光，笔记本盖板逐帧锁定。",
+    "bytes": 1376434,
+    "stabilization": "Every frame is registered to the canonical four-petal laptop-logo center and uses the exact canonical laptop lid.",
     "alignment_translation_px": [
       [
         0,
@@ -97,75 +127,75 @@
       ],
       [
         1,
-        3
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
       ],
       [
         2,
-        3
+        1
       ],
       [
         2,
-        3
+        1
       ],
       [
         0,
-        3
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        0
       ],
       [
         0,
-        3
-      ],
-      [
-        2,
-        3
-      ],
-      [
-        1,
-        3
-      ],
-      [
-        1,
-        2
-      ],
-      [
-        1,
-        2
-      ],
-      [
-        1,
-        2
-      ],
-      [
-        1,
-        2
-      ],
-      [
-        2,
-        2
-      ],
-      [
-        2,
-        3
+        0
       ],
       [
         0,
-        3
-      ],
-      [
-        0,
-        3
+        1
       ],
       [
         2,
-        3
+        1
       ],
       [
         2,
-        3
+        1
       ],
       [
         1,
-        3
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        0
       ]
     ],
     "edge_cleanup": {
@@ -193,9 +223,9 @@
       ],
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
     },
-    "transition_anchor": "PNG sequence first and last frames exactly match the typing/thinking canonical frame.",
+    "transition_anchor": "PNG sequence first and last frames exactly match the typing/thinking/idle canonical frame.",
     "frame_directory": "Frames/02-done-ok",
-    "frame_bytes": 2371760,
+    "frame_bytes": 2522231,
     "runtime_format": "complete transparent PNG frames",
     "runtime_source": "complete PNG frames"
   },
@@ -206,24 +236,64 @@
       512,
       512
     ],
-    "frames": 10,
+    "frames": 18,
     "durations_ms": [
-      350,
-      350,
-      350,
-      350,
-      400,
-      650,
-      300,
+      175,
+      175,
+      175,
+      175,
+      175,
+      175,
+      175,
+      175,
+      200,
+      200,
+      217,
+      217,
+      216,
+      150,
+      150,
       250,
       200,
       150
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 203298,
-    "stabilization": "Every frame reuses the exact typing head/neck/torso/hands/laptop pixels; only detached bubble and bulb effect pixels change.",
+    "bytes": 656460,
+    "stabilization": "All 18 frames reuse the canonical body and laptop; localized fingers type while detached bubble and bulb effects progress.",
     "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
       [
         0,
         0
@@ -267,12 +337,12 @@
     ],
     "edge_cleanup": {
       "alpha": "transparent with high-quality resampled edge transition",
-      "rule": "Magenta spill removed; production rendering also uses high-quality alpha interpolation."
+      "rule": "Effects and finger presses are composited over the same canonical alpha layer."
     },
-    "generation_source": "Built-in imagegen six-stage idea sheet; character discarded, effect components isolated and anchored, then reverse-faded.",
-    "notes": "眼睛始终自然看向电脑；脸颊侧依次出现小、中、大三个泡泡，最大泡泡变为发光灯泡，随后反向淡出。",
+    "generation_source": "Built-in imagegen bubble/bulb effect source combined with the canonical character and localized typing poses.",
+    "notes": "眼睛自然看向电脑，双手持续交替敲键盘；脸颊侧依次出现气泡和发光灯泡，随后反向淡出。",
     "frame_directory": "Frames/03-thinking",
-    "frame_bytes": 1755519,
+    "frame_bytes": 3178202,
     "runtime_format": "complete transparent PNG frames",
     "runtime_source": "complete PNG frames"
   },
@@ -294,32 +364,32 @@
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 405922,
-    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "bytes": 456092,
+    "stabilization": "Every frame is registered to the canonical four-petal laptop-logo center and uses the exact canonical laptop lid.",
     "alignment_translation_px": [
       [
-        0,
-        0
+        7,
+        -11
       ],
       [
-        -1,
-        0
+        7,
+        -11
       ],
       [
-        0,
-        0
+        7,
+        -11
       ],
       [
-        0,
-        0
+        7,
+        -10
       ],
       [
-        -1,
-        0
+        6,
+        -10
       ],
       [
-        -1,
-        -1
+        7,
+        -9
       ]
     ],
     "edge_cleanup": {
@@ -335,9 +405,10 @@
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
     },
     "frame_directory": "Frames/04-music",
-    "frame_bytes": 665967,
+    "frame_bytes": 726302,
     "runtime_format": "complete transparent PNG frames",
-    "runtime_source": "complete PNG frames"
+    "runtime_source": "complete PNG frames",
+    "notes": "保留听音乐动作；人物逐帧按统一电脑锚点校准，笔记本盖板固定。"
   },
   {
     "file": "05-tired.webp",
@@ -357,32 +428,32 @@
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 595970,
-    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "bytes": 631854,
+    "stabilization": "Every frame is registered to the canonical four-petal laptop-logo center and uses the exact canonical laptop lid.",
     "alignment_translation_px": [
       [
-        0,
-        0
+        8,
+        -5
       ],
       [
-        0,
-        0
+        8,
+        -5
       ],
       [
-        -1,
-        0
+        8,
+        -5
       ],
       [
-        0,
-        1
+        8,
+        -5
       ],
       [
-        0,
-        1
+        8,
+        -5
       ],
       [
-        0,
-        1
+        7,
+        -5
       ]
     ],
     "edge_cleanup": {
@@ -398,9 +469,10 @@
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
     },
     "frame_directory": "Frames/05-tired",
-    "frame_bytes": 973319,
+    "frame_bytes": 1011076,
     "runtime_format": "complete transparent PNG frames",
-    "runtime_source": "complete PNG frames"
+    "runtime_source": "complete PNG frames",
+    "notes": "保留疲惫扶额动作；人物逐帧按统一电脑锚点校准，笔记本盖板固定。"
   },
   {
     "file": "06-coffee.webp",
@@ -426,56 +498,56 @@
     ],
     "loop": 0,
     "alpha": true,
-    "notes": "品茶停留段保留 6 个蒸汽变化帧并压缩到 1 秒；完整抬杯、品茶、放杯动作约 3.14 秒。",
-    "bytes": 728330,
-    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "notes": "品茶停留段约 1 秒；人物逐帧按统一电脑锚点校准，笔记本盖板固定。",
+    "bytes": 638304,
+    "stabilization": "Every frame is registered to the canonical four-petal laptop-logo center and uses the exact canonical laptop lid.",
     "alignment_translation_px": [
       [
-        0,
+        2,
         0
       ],
       [
-        0,
+        2,
         0
       ],
       [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
-        1
-      ],
-      [
-        0,
+        2,
         0
       ],
       [
-        0,
+        2,
         0
       ],
       [
-        0,
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
         0
       ]
     ],
@@ -498,7 +570,48 @@
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
     },
     "frame_directory": "Frames/06-coffee",
-    "frame_bytes": 1854658,
+    "frame_bytes": 1889626,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
+  },
+  {
+    "file": "07-idle.webp",
+    "name": "待机",
+    "size": [
+      512,
+      512
+    ],
+    "frames": 3,
+    "durations_ms": [
+      2500,
+      100,
+      2500
+    ],
+    "loop": 0,
+    "alpha": true,
+    "bytes": 140924,
+    "stabilization": "All idle frames use the exact canonical body, hands and laptop; only one short blink patch changes.",
+    "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "edge_cleanup": {
+      "alpha": "transparent with high-quality resampled edge transition",
+      "rule": "No hand, body or laptop pixels move during idle."
+    },
+    "notes": "待机时双手完全静止；每 5.1 秒周期仅有一个 100ms 眨眼帧。",
+    "frame_directory": "Frames/07-idle",
+    "frame_bytes": 504885,
     "runtime_format": "complete transparent PNG frames",
     "runtime_source": "complete PNG frames"
   }
