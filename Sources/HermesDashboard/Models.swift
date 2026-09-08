@@ -752,9 +752,9 @@ enum AgentAnimationAction: String {
 
     var duration: TimeInterval {
         switch self {
-        case .typing: return 1.32
+        case .typing: return 1.50
         case .doneOK: return 3.01
-        case .thinking: return 2.45
+        case .thinking: return 3.35
         case .music: return 1.44
         case .tired: return 2.78
         case .coffee: return 3.14
@@ -1551,10 +1551,58 @@ final class DashboardModel: NSObject {
     }
 }
 
+private struct AgentAnimationManifestEntry: Decodable {
+    var file: String
+    var durationsMS: [Int]
+
+    private enum CodingKeys: String, CodingKey {
+        case file
+        case durationsMS = "durations_ms"
+    }
+}
+
+private final class PNGFrameAnimator {
+    private let frames: [CGImage]
+    private let durations: [TimeInterval]
+    private let totalDuration: TimeInterval
+
+    init?(directoryURL: URL, durationsMS: [Int]) {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ).filter({ $0.pathExtension.lowercased() == "png" }).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }),
+        urls.count == durationsMS.count else { return nil }
+
+        let decoded = urls.compactMap { url -> CGImage? in
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        }
+        guard decoded.count == urls.count else { return nil }
+        let seconds = durationsMS.map { max(TimeInterval($0) / 1_000, 0.01) }
+        frames = decoded
+        durations = seconds
+        totalDuration = seconds.reduce(0, +)
+    }
+
+    func frame(at elapsed: TimeInterval) -> CGImage? {
+        guard let first = frames.first, totalDuration > 0 else { return nil }
+        let time = max(elapsed, 0).truncatingRemainder(dividingBy: totalDuration)
+        var cursor: TimeInterval = 0
+        for (index, duration) in durations.enumerated() {
+            cursor += duration
+            if time < cursor { return frames[index] }
+        }
+        return first
+    }
+}
+
 final class DashboardAssetStore {
     let folderURL: URL?
     private var staticCache: [String: CGImage] = [:]
     private var animatedCache: [String: AnimatedImageAnimator] = [:]
+    private var bundledAgentSequences: [String: PNGFrameAnimator] = [:]
+    private var didLoadBundledAgentSequences = false
 
     init(folderURL: URL?) {
         self.folderURL = folderURL
@@ -1586,28 +1634,51 @@ final class DashboardAssetStore {
     }
 
     func agentImage(action: AgentAnimationAction, state: AgentState, elapsed: TimeInterval) -> CGImage? {
-        if let image = image(
-            names: [action.rawValue],
-            subfolders: ["AgentAnimations", "agent"],
-            at: elapsed
-        ) {
-            return image
-        }
-
         var legacyNames = ["hermes-\(state.rawValue)", "agent-\(state.rawValue)"]
         if state == .outputting {
             legacyNames.append(contentsOf: ["hermes-working", "agent-working"])
         }
         legacyNames.append(contentsOf: ["hermes", "agent"])
-        return image(names: legacyNames, subfolders: ["hermes", "agent", "icons"], at: elapsed)
+        let names = [action.rawValue] + legacyNames
+
+        if let folderURL,
+           let custom = image(names: names, subfolders: ["AgentAnimations", "hermes", "agent", "icons"], at: elapsed, roots: [folderURL]) {
+            return custom
+        }
+        if let bundledFrame = bundledAgentFrame(action: action, at: elapsed) {
+            return bundledFrame
+        }
+        guard let bundledRoot = Bundle.main.resourceURL else { return nil }
+        return image(names: names, subfolders: ["AgentAnimations", "hermes", "agent", "icons"], at: elapsed, roots: [bundledRoot])
     }
 
-    private func image(names: [String], subfolders: [String], at time: TimeInterval) -> CGImage? {
-        var roots: [URL] = []
-        if let folderURL { roots.append(folderURL) }
-        if let bundled = Bundle.main.resourceURL,
-           !roots.contains(where: { $0.standardizedFileURL == bundled.standardizedFileURL }) {
-            roots.append(bundled)
+    private func bundledAgentFrame(action: AgentAnimationAction, at elapsed: TimeInterval) -> CGImage? {
+        if !didLoadBundledAgentSequences {
+            didLoadBundledAgentSequences = true
+            guard let resourceURL = Bundle.main.resourceURL else { return nil }
+            let animationRoot = resourceURL.appendingPathComponent("AgentAnimations", isDirectory: true)
+            let manifestURL = animationRoot.appendingPathComponent("manifest.json")
+            guard let data = try? Data(contentsOf: manifestURL),
+                  let entries = try? JSONDecoder().decode([AgentAnimationManifestEntry].self, from: data) else { return nil }
+            for entry in entries {
+                let key = URL(fileURLWithPath: entry.file).deletingPathExtension().lastPathComponent
+                let directory = animationRoot.appendingPathComponent("Frames/\(key)", isDirectory: true)
+                if let animator = PNGFrameAnimator(directoryURL: directory, durationsMS: entry.durationsMS) {
+                    bundledAgentSequences[key] = animator
+                }
+            }
+        }
+        return bundledAgentSequences[action.rawValue]?.frame(at: elapsed)
+    }
+
+    private func image(names: [String], subfolders: [String], at time: TimeInterval, roots explicitRoots: [URL]? = nil) -> CGImage? {
+        var roots = explicitRoots ?? []
+        if explicitRoots == nil {
+            if let folderURL { roots.append(folderURL) }
+            if let bundled = Bundle.main.resourceURL,
+               !roots.contains(where: { $0.standardizedFileURL == bundled.standardizedFileURL }) {
+                roots.append(bundled)
+            }
         }
         guard !roots.isEmpty else { return nil }
         for name in names {

@@ -357,8 +357,7 @@ final class DashboardView: NSView {
         let agentOrigin = model.layout.hermesAgent
         let agentRect = CGRect(x: agentOrigin.x, y: agentOrigin.y, width: 584, height: bottomModuleHeight)
         PixelPainter.drawFrame(agentRect, color: PixelPalette.borderBright, context: context, fill: PixelPalette.panel.withAlphaComponent(model.layout.agentOpacity))
-        let agentTitle = model.runtimeSource == .codex ? "CODEX AGENT" : "HERMES AGENT"
-        drawText(agentTitle, key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
+        drawText("AGENT", key: .agent, at: CGPoint(x: agentOrigin.x + 18, y: agentOrigin.y + 18), context: context)
         let currentState = model.runtime.agentState
         let animation = model.agentAnimation(at: CACurrentMediaTime())
         if let agentImage = model.assetStore.agentImage(action: animation.action, state: currentState, elapsed: animation.elapsed) {

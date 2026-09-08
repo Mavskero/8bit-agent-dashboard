@@ -1187,7 +1187,7 @@ private final class LayoutSettingsWindowController: NSWindowController, NSWindow
         addLabel("CANVAS PADDING", x: 28, y: 482, width: 220, to: content)
         addField(tag: FieldTag.padding, value: model.layout.padding, x: 270, y: 478, to: content)
         addPositionRow("RUNTIME STATUS", position: model.layout.runtimeStatus, xTag: FieldTag.runtimeX, yTag: FieldTag.runtimeY, y: 438, to: content)
-        addPositionRow("HERMES AGENT", position: model.layout.hermesAgent, xTag: FieldTag.agentX, yTag: FieldTag.agentY, y: 398, to: content)
+        addPositionRow("AGENT PANEL", position: model.layout.hermesAgent, xTag: FieldTag.agentX, yTag: FieldTag.agentY, y: 398, to: content)
         addCharacterRow(y: 358, to: content)
         addPositionRow("ACTIVE SESSION", position: model.layout.activeSession, xTag: FieldTag.sessionX, yTag: FieldTag.sessionY, y: 318, to: content)
 

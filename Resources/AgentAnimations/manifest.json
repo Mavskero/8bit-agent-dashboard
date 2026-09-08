@@ -6,17 +6,32 @@
       512,
       512
     ],
-    "frames": 3,
+    "frames": 6,
     "durations_ms": [
-      510,
-      240,
-      570
+      250,
+      250,
+      250,
+      250,
+      250,
+      250
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 107434,
-    "stabilization": "Fixed body/laptop across all frames; blink uses an aligned eye-region patch.",
+    "bytes": 270626,
+    "stabilization": "All frames reuse one canonical head/neck/torso/laptop; only hand patches and the sole blink patch change.",
     "alignment_translation_px": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
       [
         0,
         0
@@ -31,15 +46,15 @@
       ]
     ],
     "edge_cleanup": {
-      "alpha": "hard 0/255",
-      "changed_outer_pixels_per_frame": [
-        798,
-        804,
-        798
-      ],
-      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
+      "alpha": "transparent with high-quality resampled edge transition",
+      "rule": "Magenta spill removed; production rendering also uses high-quality alpha interpolation."
     },
-    "notes": "身体与电脑逐像素固定，仅眼睛眨动；睁眼与闭眼时长为 1080ms:240ms（4.5:1）。"
+    "notes": "六帧循环中仅第 4 帧闭眼，按帧数和时长均占 16.7%；双手手指交替敲击键盘。",
+    "generation_source": "Built-in imagegen six-frame typing sheet; magenta keying, spill cleanup, anchor mapping and patch-only compositing.",
+    "frame_directory": "Frames/01-typing",
+    "frame_bytes": 1014848,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   },
   {
     "file": "02-done-ok.webp",
@@ -72,7 +87,7 @@
     ],
     "loop": 0,
     "alpha": true,
-    "notes": "首帧复用打字首帧；细化抬手、转腕、OK，最高点星光闪耀，再收手。",
+    "notes": "首尾帧复用打字/思考的统一基准人物；中段抬手、转腕、OK 和指尖星光保持原动作。",
     "bytes": 1210548,
     "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
     "alignment_translation_px": [
@@ -177,7 +192,12 @@
         58
       ],
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
-    }
+    },
+    "transition_anchor": "PNG sequence first and last frames exactly match the typing/thinking canonical frame.",
+    "frame_directory": "Frames/02-done-ok",
+    "frame_bytes": 2371760,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   },
   {
     "file": "03-thinking.webp",
@@ -186,19 +206,23 @@
       512,
       512
     ],
-    "frames": 6,
+    "frames": 10,
     "durations_ms": [
-      650,
+      350,
+      350,
+      350,
+      350,
       400,
-      500,
-      110,
-      140,
-      650
+      650,
+      300,
+      250,
+      200,
+      150
     ],
     "loop": 0,
     "alpha": true,
-    "bytes": 510048,
-    "stabilization": "Frames registered to the laptop lid anchor; intended pose motion is preserved.",
+    "bytes": 203298,
+    "stabilization": "Every frame reuses the exact typing head/neck/torso/hands/laptop pixels; only detached bubble and bulb effect pixels change.",
     "alignment_translation_px": [
       [
         0,
@@ -209,34 +233,48 @@
         0
       ],
       [
-        -1,
+        0,
         0
       ],
       [
         0,
-        1
+        0
       ],
       [
         0,
-        1
+        0
       ],
       [
-        -1,
-        1
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
       ]
     ],
     "edge_cleanup": {
-      "alpha": "hard 0/255",
-      "changed_outer_pixels_per_frame": [
-        563,
-        590,
-        572,
-        692,
-        573,
-        561
-      ],
-      "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
-    }
+      "alpha": "transparent with high-quality resampled edge transition",
+      "rule": "Magenta spill removed; production rendering also uses high-quality alpha interpolation."
+    },
+    "generation_source": "Built-in imagegen six-stage idea sheet; character discarded, effect components isolated and anchored, then reverse-faded.",
+    "notes": "眼睛始终自然看向电脑；脸颊侧依次出现小、中、大三个泡泡，最大泡泡变为发光灯泡，随后反向淡出。",
+    "frame_directory": "Frames/03-thinking",
+    "frame_bytes": 1755519,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   },
   {
     "file": "04-music.webp",
@@ -295,7 +333,11 @@
         609
       ],
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
-    }
+    },
+    "frame_directory": "Frames/04-music",
+    "frame_bytes": 665967,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   },
   {
     "file": "05-tired.webp",
@@ -354,7 +396,11 @@
         579
       ],
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
-    }
+    },
+    "frame_directory": "Frames/05-tired",
+    "frame_bytes": 973319,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   },
   {
     "file": "06-coffee.webp",
@@ -450,6 +496,10 @@
         0
       ],
       "rule": "Darken only bright outer-edge pixels adjacent to existing dark artwork; preserve broad ivory regions."
-    }
+    },
+    "frame_directory": "Frames/06-coffee",
+    "frame_bytes": 1854658,
+    "runtime_format": "complete transparent PNG frames",
+    "runtime_source": "complete PNG frames"
   }
 ]
