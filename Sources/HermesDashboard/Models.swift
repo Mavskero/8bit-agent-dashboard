@@ -6,6 +6,7 @@ import Security
 
 enum DashboardDisplayPreference {
     private static let displayIDKey = "preferredDisplayID"
+    private static let startupDisplayName = "Wokyis"
 
     static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
         let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
@@ -23,6 +24,18 @@ enum DashboardDisplayPreference {
             return screen
         }
         return NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    static func startupScreen() -> NSScreen {
+        let screens = NSScreen.screens
+        let namedScreen = screens.enumerated().first(where: { index, screen in
+            index == 1 && screen.localizedName.caseInsensitiveCompare(startupDisplayName) == .orderedSame
+        })?.element ?? screens.first(where: {
+            $0.localizedName.caseInsensitiveCompare(startupDisplayName) == .orderedSame
+        })
+        let screen = namedScreen ?? preferredScreen()
+        save(screen: screen)
+        return screen
     }
 
     static func save(screen: NSScreen) {

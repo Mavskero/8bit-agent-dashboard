@@ -78,7 +78,7 @@ final class DashboardAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
 
-        let screen = DashboardDisplayPreference.preferredScreen()
+        let screen = DashboardDisplayPreference.startupScreen()
         // `contentRect` is interpreted in the coordinate system of the screen
         // passed to this initializer. Passing a screen's global frame here
         // offsets secondary displays twice (for example, x = -2560 instead
