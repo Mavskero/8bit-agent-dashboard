@@ -1082,9 +1082,12 @@ final class DashboardModel: NSObject {
     private var weatherTimer: Timer?
     private var activityStreamTimer: Timer?
     private var tokenAnimationTimer: Timer?
-    private var lastBalanceRefreshAttempt: Date?
-    private var lastResetRefreshAttempt: Date?
-    private var planUsageRequestID: UUID?
+    private var lastBalanceRefreshSuccess: Date?
+    private var lastResetRefreshSuccess: Date?
+    private var lastPlanUsageAttempt: Date?
+    private var planUsageRequestInFlight = false
+    private var pendingBalanceRefresh = false
+    private var pendingResetRefresh = false
     private var activityStreamSource: RuntimeSource?
     private var activityQueue: [AgentActivityEvent] = []
     private var activeActivity: (event: AgentActivityEvent, characters: [Character], revealed: Int)?
@@ -1129,6 +1132,12 @@ final class DashboardModel: NSObject {
         refreshPlanUsage(updateBalance: true, updateReset: true)
         schedulePlanUsageTimer()
         scheduleWeatherTimer()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWake(_:)),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshDynamicData()
         }
@@ -1145,6 +1154,7 @@ final class DashboardModel: NSObject {
         activityStreamTimer = nil
         tokenAnimationTimer?.invalidate()
         tokenAnimationTimer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.didWakeNotification, object: nil)
     }
 
     func setWallpaper(url: URL?) {
@@ -1470,9 +1480,15 @@ final class DashboardModel: NSObject {
 
     private func schedulePlanUsageTimer() {
         planUsageTimer?.invalidate()
-        planUsageTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             self?.refreshPlanUsageIfNeeded()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        planUsageTimer = timer
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        refreshPlanUsageIfNeeded()
     }
 
     private func scheduleWeatherTimer() {
@@ -1484,24 +1500,30 @@ final class DashboardModel: NSObject {
     }
 
     private func refreshPlanUsageIfNeeded(now: Date = Date()) {
-        let balanceDue = lastBalanceRefreshAttempt.map { now.timeIntervalSince($0) >= 600 } ?? true
-        let resetDue = lastResetRefreshAttempt.map { now.timeIntervalSince($0) >= 3_600 } ?? true
+        let balanceDue = lastBalanceRefreshSuccess.map { now.timeIntervalSince($0) >= 600 } ?? true
+        let resetDue = lastResetRefreshSuccess.map { now.timeIntervalSince($0) >= 3_600 } ?? true
         guard balanceDue || resetDue else { return }
+        // A transient Codex/app-server failure should be retried promptly. The
+        // normal 10-minute and 1-hour schedules are measured from successful
+        // responses, while failed requests retry after one minute.
+        if let lastPlanUsageAttempt, now.timeIntervalSince(lastPlanUsageAttempt) < 60 { return }
         refreshPlanUsage(updateBalance: balanceDue, updateReset: resetDue, now: now)
     }
 
     func refreshPlanUsage(updateBalance: Bool = true, updateReset: Bool = true, now: Date = Date()) {
         guard updateBalance || updateReset else { return }
-        let requestID = UUID()
-        planUsageRequestID = requestID
-        if updateBalance { lastBalanceRefreshAttempt = now }
-        if updateReset { lastResetRefreshAttempt = now }
+        if planUsageRequestInFlight {
+            pendingBalanceRefresh = pendingBalanceRefresh || updateBalance
+            pendingResetRefresh = pendingResetRefresh || updateReset
+            return
+        }
+        planUsageRequestInFlight = true
+        lastPlanUsageAttempt = now
         let settings = planUsageSettings
         planUsageService.fetch(settings: settings) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
-                guard self.planUsageRequestID == requestID else { return }
-                self.planUsageRequestID = nil
+                self.planUsageRequestInFlight = false
                 switch result {
                 case .success(let snapshot):
                     self.planUsage.authenticated = snapshot.authenticated
@@ -1514,10 +1536,12 @@ final class DashboardModel: NSObject {
                     if updateBalance {
                         self.planUsage.remainingPercent = snapshot.remainingPercent
                         self.planUsageSettings.lastRemainingPercent = snapshot.remainingPercent
+                        self.lastBalanceRefreshSuccess = Date()
                     }
                     if updateReset {
                         self.planUsage.resetsAt = snapshot.resetsAt
                         self.planUsageSettings.lastResetAt = snapshot.resetsAt
+                        self.lastResetRefreshSuccess = Date()
                     }
                     self.planUsageSettings.save()
                 case .failure(let error):
@@ -1525,6 +1549,13 @@ final class DashboardModel: NSObject {
                 }
                 self.applyPlanUsageToRuntime()
                 self.notifyChange()
+                let refreshBalance = self.pendingBalanceRefresh
+                let refreshReset = self.pendingResetRefresh
+                self.pendingBalanceRefresh = false
+                self.pendingResetRefresh = false
+                if refreshBalance || refreshReset {
+                    self.refreshPlanUsage(updateBalance: refreshBalance, updateReset: refreshReset)
+                }
             }
         }
     }

@@ -45,6 +45,16 @@ private final class CodexAppServerClient {
             let stdout = Pipe()
             process.executableURL = URL(fileURLWithPath: resolved)
             process.arguments = ["app-server", "--stdio"]
+            // LaunchAgents receive a minimal PATH. Homebrew's `codex` entry
+            // point uses `#!/usr/bin/env node`, so include the usual package
+            // manager locations when starting the child process.
+            var environment = ProcessInfo.processInfo.environment
+            let inheritedPath = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+            let executableDirectory = URL(fileURLWithPath: resolved).deletingLastPathComponent().path
+            let pathCandidates = [executableDirectory, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] + inheritedPath
+            var seenPaths = Set<String>()
+            environment["PATH"] = pathCandidates.filter { seenPaths.insert($0).inserted }.joined(separator: ":")
+            process.environment = environment
             process.standardInput = stdin
             process.standardOutput = stdout
             process.standardError = FileHandle.nullDevice
@@ -176,7 +186,13 @@ final class CodexPlanUsageService {
     private var oauthClient: CodexAppServerClient?
 
     func fetch(settings: PlanUsageSettings, completion: @escaping (Result<PlanUsageSnapshot, Error>) -> Void) {
-        refreshClient?.stop()
+        // DashboardModel serializes usage refreshes. Do not terminate an
+        // existing app-server request here: doing so can discard its callback
+        // and leave the dashboard showing the previous cached balance.
+        guard refreshClient == nil else {
+            completion(.failure(PlanUsageServiceError.protocolError("A plan usage refresh is already running")))
+            return
+        }
         let client = CodexAppServerClient()
         refreshClient = client
         client.start(executable: settings.codexExecutable) { [weak self, weak client] startResult in
