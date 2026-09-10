@@ -15,6 +15,8 @@
 open build/HermesDashboard.app
 ```
 
+正式安装版位于 `/Applications/HermesDashboard.app`，应用图标由 `Resources/AppIcon.icns` 提供。`Resources/LaunchAgents/com.hermes.dashboard.plist` 可安装到 `~/Library/LaunchAgents`，让 Dashboard 在用户登录后自动启动；异常退出时会重新拉起，用户通过 `⌘Q` 正常退出时不会强制重启。
+
 运行期间可以点击 Runtime Status 标题右侧的齿轮按钮，或按 `S` / `⌘,` 打开设置窗口，按 `Esc` 或 `⌘Q` 退出。快捷键由应用级事件分发处理，即使全屏窗口的第一响应者暂时变化也能生效；在设置输入框中输入 `S` 不会误触发。鼠标启动时保持可见，停止活动 10 秒后自动隐藏，再次移动或点击会立即显示。
 
 ## 字体、颜色与字号
