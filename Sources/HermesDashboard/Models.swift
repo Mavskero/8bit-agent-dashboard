@@ -1313,7 +1313,11 @@ final class DashboardModel: NSObject {
         runtimeService.fetch(source: source, activityLayout: activityLayout) { [weak self] status in
             guard let self else { return }
             guard source == self.runtimeSource else { return }
+            let previousSession = self.runtime.activeSession
             self.runtime = status.preservingTransientData(from: self.runtime)
+            if self.runtime.activeSession != previousSession {
+                self.resetActivityStream(for: source)
+            }
             self.handleAgentStateChange(to: self.runtime.agentState, at: CACurrentMediaTime())
             self.updateTodayTokensTarget(self.runtime.todayTokens, hasData: self.runtime.hasTodayTokenData)
             self.updateActivityTarget(self.runtime.activityLog, source: source)

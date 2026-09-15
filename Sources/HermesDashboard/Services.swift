@@ -1560,7 +1560,10 @@ private struct HermesSnapshot {
         let historyPath = home.appendingPathComponent(".codex/thread_history_1.sqlite").path
         let statePath = home.appendingPathComponent(".codex/state_5.sqlite").path
 
-        let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC LIMIT 5;")
+        // Catalog recency is updated asynchronously and can lag behind a newly
+        // started turn. Read all visible candidates, then put the most recently
+        // started running thread first so its rollout drives the live stream.
+        let catalogRows = readSQLiteRows(path: catalogPath, query: "SELECT thread_id, display_title, source_updated_at, source_recency_at FROM local_thread_catalog WHERE missing_candidate = 0 ORDER BY source_recency_at DESC;")
         if !catalogRows.isEmpty {
             let stateRowsResult = readSQLiteRowsIfAvailable(path: statePath, query: "SELECT id, rollout_path, tokens_used, model, reasoning_effort, model_provider FROM threads;")
             let stateRows = stateRowsResult ?? []
@@ -1568,6 +1571,13 @@ private struct HermesSnapshot {
                 guard let id = row["id"] as? String else { return nil }
                 return (id, row)
             })
+            // The catalog also contains ChatGPT cloud conversations. They do
+            // not have a local rollout in state_5.sqlite and cannot provide a
+            // live event stream, so exclude them from Codex runtime selection.
+            let localCatalogRows = catalogRows.filter { row in
+                guard let threadID = row["thread_id"] as? String else { return false }
+                return states[threadID] != nil
+            }
             let turnRowsResult = readSQLiteRowsIfAvailable(path: historyPath, query: "SELECT thread_id, status, started_at, completed_at FROM thread_turns ORDER BY started_at DESC;")
             let turnRows = turnRowsResult ?? []
             var latestTurns: [String: [String: Any]] = [:]
@@ -1589,7 +1599,22 @@ private struct HermesSnapshot {
                 : nil
             let todayTokens = stableTodayTokens(measured: measuredTodayTokens)
 
-            let sessions = catalogRows.compactMap { row -> SessionInfo? in
+            let newestRunningThreadID = localCatalogRows.compactMap { row -> (id: String, startedAt: Double)? in
+                guard let threadID = row["thread_id"] as? String,
+                      let turn = latestTurns[threadID],
+                      normalizedSessionStatus(turn["status"] as? String) == "RUNNING" else { return nil }
+                return (threadID, (turn["started_at"] as? NSNumber)?.doubleValue ?? 0)
+            }.max(by: { $0.startedAt < $1.startedAt })?.id
+            let currentThreadID = newestRunningThreadID ?? (localCatalogRows.first?["thread_id"] as? String)
+            var orderedCatalogRows = localCatalogRows
+            if let currentThreadID,
+               let currentIndex = orderedCatalogRows.firstIndex(where: { $0["thread_id"] as? String == currentThreadID }),
+               currentIndex != 0 {
+                let currentRow = orderedCatalogRows.remove(at: currentIndex)
+                orderedCatalogRows.insert(currentRow, at: 0)
+            }
+
+            let sessions = orderedCatalogRows.prefix(5).compactMap { row -> SessionInfo? in
                 guard let threadID = row["thread_id"] as? String,
                       let rawTitle = row["display_title"] as? String else { return nil }
                 let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1600,7 +1625,9 @@ private struct HermesSnapshot {
                 let usage = (state?["rollout_path"] as? String).flatMap(readTokenUsage)
                 let fallbackTokens = (state?["tokens_used"] as? NSNumber)?.doubleValue ?? 0
                 let contextPercent = usage?.percent ?? clamp(Int((fallbackTokens / 258400.0 * 100).rounded()), min: 0, max: 100)
-                let updatedAt = formatEpoch((row["source_updated_at"] as? NSNumber)?.doubleValue)
+                let catalogUpdatedAt = (row["source_updated_at"] as? NSNumber)?.doubleValue ?? 0
+                let turnStartedAt = (turn?["started_at"] as? NSNumber)?.doubleValue ?? 0
+                let updatedAt = formatEpoch(max(catalogUpdatedAt, turnStartedAt))
                 return SessionInfo(title: title, progress: contextPercent, status: status, updatedAt: updatedAt, contextPercent: contextPercent)
             }
             if !sessions.isEmpty {
@@ -1612,7 +1639,6 @@ private struct HermesSnapshot {
                 } else {
                     agentState = .idle
                 }
-                let currentThreadID = catalogRows.first?["thread_id"] as? String
                 let currentState = currentThreadID.flatMap { states[$0] }
                 let metadata = readCodexRuntimeMetadata(state: currentState)
                 let activityLog = (currentState?["rollout_path"] as? String).map(readCodexActivity) ?? []
