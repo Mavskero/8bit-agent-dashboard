@@ -350,6 +350,16 @@ private struct LocalSummaryResult {
 private final class LocalQwenSummaryService {
     private let model = "qwen3.5:2b"
     private var cache: [String: LocalSummaryResult] = [:]
+    private var serverProcess: Process?
+    private var lastServerStartAttempt: Date?
+
+    func prepare() {
+        guard ensureServerAvailable() else { return }
+        // An empty prompt asks Ollama to load the model without generating
+        // visible text. Keep it resident while Dashboard is running so the
+        // first completed task does not pay the cold-start cost.
+        _ = performGenerate(prompt: "", tokenBudget: 1, timeout: 60)
+    }
 
     func summarize(id: String, text: String, layout: ActivitySummaryLayout) -> LocalSummaryResult {
         let cacheKey = "\(id)|\(layout.signature)"
@@ -382,19 +392,24 @@ private final class LocalQwenSummaryService {
     }
 
     private func requestSummary(_ prompt: String, tokenBudget: Int) -> String? {
+        guard ensureServerAvailable() else { return nil }
+        return performGenerate(prompt: prompt, tokenBudget: tokenBudget, timeout: 30)
+    }
+
+    private func performGenerate(prompt: String, tokenBudget: Int, timeout: TimeInterval) -> String? {
         guard let url = URL(string: "http://127.0.0.1:11434/api/generate"),
               let body = try? JSONSerialization.data(withJSONObject: [
                 "model": model,
                 "prompt": prompt,
                 "stream": false,
                 "think": false,
-                "keep_alive": "10m",
+                "keep_alive": -1,
                 "options": ["temperature": 0.1, "num_predict": tokenBudget]
               ]) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
-        request.timeoutInterval = 45
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let semaphore = DispatchSemaphore(value: 0)
         var summary: String?
@@ -405,11 +420,75 @@ private final class LocalQwenSummaryService {
             summary = object["response"] as? String
         }
         task.resume()
-        if semaphore.wait(timeout: .now() + 46) == .timedOut {
+        if semaphore.wait(timeout: .now() + timeout + 1) == .timedOut {
             task.cancel()
             return nil
         }
         return summary
+    }
+
+    private func ensureServerAvailable() -> Bool {
+        if serverIsAvailable() { return true }
+
+        let shouldStart = serverProcess?.isRunning != true
+            && (lastServerStartAttempt.map { Date().timeIntervalSince($0) >= 30 } ?? true)
+        if shouldStart {
+            lastServerStartAttempt = Date()
+            startServer()
+        }
+
+        // Ollama normally opens its local port in under a second. Allow a few
+        // seconds for slower login starts, then fall back instead of leaving
+        // the activity stream on the pending status.
+        for _ in 0..<24 {
+            Thread.sleep(forTimeInterval: 0.25)
+            if serverIsAvailable() { return true }
+        }
+        return false
+    }
+
+    private func serverIsAvailable() -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/version") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 0.5
+        let semaphore = DispatchSemaphore(value: 0)
+        var available = false
+        let task = URLSession.shared.dataTask(with: request) { _, response, _ in
+            available = (response as? HTTPURLResponse)?.statusCode == 200
+            semaphore.signal()
+        }
+        task.resume()
+        if semaphore.wait(timeout: .now() + 0.75) == .timedOut {
+            task.cancel()
+            return false
+        }
+        return available
+    }
+
+    private func startServer() {
+        let candidates = [
+            "/Applications/Ollama.app/Contents/Resources/ollama",
+            "/opt/homebrew/bin/ollama",
+            "/usr/local/bin/ollama"
+        ]
+        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["serve"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        var environment = ProcessInfo.processInfo.environment
+        let inheritedPath = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let paths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] + inheritedPath
+        var seen = Set<String>()
+        environment["PATH"] = paths.filter { seen.insert($0).inserted }.joined(separator: ":")
+        process.environment = environment
+        do {
+            try process.run()
+            serverProcess = process
+        } catch {
+            serverProcess = nil
+        }
     }
 
     private func cleanSummary(_ value: String?) -> String {
@@ -1052,6 +1131,13 @@ final class RuntimeStatusService {
     }()
     private let rolloutTimestampFormatter = ISO8601DateFormatter()
 
+    init() {
+        let summaryService = qwenSummaryService
+        summaryQueue.async {
+            summaryService.prepare()
+        }
+    }
+
     func fetch(source: RuntimeSource, activityLayout: ActivitySummaryLayout, completion: @escaping (RuntimeStatus) -> Void) {
         fetchLock.lock()
         guard !isFetching else {
@@ -1074,14 +1160,14 @@ final class RuntimeStatusService {
         guard let finalIndex = status.activityLog.lastIndex(where: { $0.summarizeBeforeDisplay }) else { return status }
         var updated = status
         let finalEvent = updated.activityLog[finalIndex]
-        let summaryID = "\(finalEvent.id)|\(layout.signature)"
+        let summaryID = "\(stableSummaryDigest(finalEvent.text))|\(layout.signature)"
         updated.activityLog.removeAll { $0.summarizeBeforeDisplay }
         guard let result = completedSummaries[summaryID] else {
             updated.agentState = .thinking
             updated.activityLog.append(AgentActivityEvent(id: "\(finalEvent.id):summary-pending", kind: .status, text: "正在总结输出结果"))
             if pendingSummaries.insert(summaryID).inserted {
                 summaryQueue.async {
-                    let result = self.qwenSummaryService.summarize(id: finalEvent.id, text: finalEvent.text, layout: layout)
+                    let result = self.qwenSummaryService.summarize(id: summaryID, text: finalEvent.text, layout: layout)
                     self.queue.async {
                         self.pendingSummaries.remove(summaryID)
                         self.completedSummaries[summaryID] = result
@@ -1098,6 +1184,18 @@ final class RuntimeStatusService {
         summarized.summarizeBeforeDisplay = false
         updated.activityLog = [summarized]
         return updated
+    }
+
+    private func stableSummaryDigest(_ text: String) -> String {
+        // FNV-1a is deterministic across launches, unlike Swift's randomized
+        // Hasher. Keying by content also survives rollout records whose
+        // fallback line index changes as the rolling read window advances.
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
     }
 
     private func read(source: RuntimeSource) -> RuntimeStatus? {

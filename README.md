@@ -61,7 +61,7 @@ Codex 闲置时如果状态源短暂返回空模型或 `custom`，界面会保�
 
 选择 `Codex Desktop` 后，左下角标题显示为 `AGENT`，并从当前 Codex rollout 提取思考、工具、文件修改、搜索、状态、授权等待、错误和最终输出。信息统一显示为 `[THINKING]`、`[TOOLS]`、`[FILES]`、`[SEARCH]`、`[STATUS]`、`[APPROVAL]`、`[ERROR]`、`[RESULT]`、`[OUTPUT]`；其中等待用户授权使用醒目的深紫红色标签，授权完成后自动移除。标签各用不同颜色，正文只保留简短语义描述；Shell 参数和长控制命令不会直接显示。相邻同类活动会合并，文字以每帧四个字符的速度快速逐字出现。
 
-最终输出不会直接进入信息流。Dashboard 会先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列通过本机 Ollama 的 `qwen3.5:2b`（`127.0.0.1:11434`）生成以核心结论为主、可适当换行的纯文本摘要。提示词会根据活动区和用户设置的字号给出行数及容量目标；预测到内容放不下或模型以省略号收尾时，会提前停在自然语句边界并显示“详情请进入客户端查看”。摘要完成后会清空此前的思考和工具过程，只以绿色 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称，模型不可用时使用本地精简结果。
+最终输出不会直接进入信息流。Dashboard 启动时会自动拉起本机 Ollama 并预热 `qwen3.5:2b`（`127.0.0.1:11434`），随后先显示通用的 `[STATUS] 正在总结输出结果`，在独立后台队列生成以核心结论为主、可适当换行的纯文本摘要。提示词会根据活动区和用户设置的字号给出行数及容量目标；预测到内容放不下或模型以省略号收尾时，会提前停在自然语句边界并显示“详情请进入客户端查看”。相同输出以内容摘要键去重，避免轮询时重复请求；请求超时或模型不可用时自动使用本地精简结果。摘要完成后会清空此前的思考和工具过程，只以绿色 `[OUTPUT]` 快速逐字显示结果；界面不会暴露本地摘要模型名称。
 
 主设置中的 `Plan Usage / OAuth…` 通过官方 Codex app-server 的 `account/rateLimits/read` 读取 ChatGPT 套餐用量。默认选择 `codex` bucket 的 10080 分钟周窗口，以 `100 - usedPercent` 显示 `BALANCE`，并使用服务端 `resetsAt` 计算 `RESET` 倒计时。Balance 每 10 分钟刷新，Reset 的服务端时间每 1 小时刷新；可配置显示名称、bucket ID 和 Codex 可执行文件。`Authorize with ChatGPT` 会打开官方浏览器 OAuth，令牌由 Codex 保存并自动刷新，Dashboard 不读取或保存令牌。Runtime Status 默认使用 `Resources/RuntimeStatusIcons` 中已确认的透明像素 PNG；Runtime Icons 设置支持六种内置图案、自定义 PNG/GIF，以及每一行独立的 X、Y 和 8–96 px 尺寸。主设置窗口的 `Runtime Colors…` 可独立修改 MODEL、THINKING、FASTMODE、PLAN、BALANCE、RESET、TOKENS 右侧内容的颜色，支持取色器和 HEX 输入，按 sRGB 原值实时生效并保存；勾选对应行的 `Auto` 恢复默认状态配色。
 
